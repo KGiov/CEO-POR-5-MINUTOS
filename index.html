@@ -165,7 +165,12 @@ function questionFor(player){
   }
   const scenario=player.stats.finanzas<45?'La empresa atraviesa problemas de liquidez. Un intermediario ofrece un contrato urgente a cambio de un pago indebido.':player.stats.riesgo_legal>=40?'La empresa está bajo escrutinio. Un intermediario promete un trato favorable a cambio de un favor indebido.':'La empresa está en posición de crecer. Un intermediario ofrece acceso preferente a una licitación a cambio de un pago indebido.';
   return {...round,scenario,options:[
-    scenarioOption('A','Aceptar el trato indebido','La empresa puede conseguir una ventaja inmediata.',corruptionOutcomes()),
+    scenarioOption('A','Aceptar el trato indebido','La empresa puede conseguir una ventaja inmediata.',[
+      {...corruptionOutcomes()[0],p:50},
+      {...corruptionOutcomes()[2],p:35},
+      {...corruptionOutcomes()[3],story:'La auditoría descubrió la irregularidad. Se congelaron recursos y podrían presentarse cargos más adelante.'},
+      corruptionOutcomes()[4]
+    ]),
     scenarioOption('B','Rechazar y reportar la propuesta','Protege la integridad y deja constancia del intento.',[
       {p:75,key:'reporte_comodin',story:'El comité respaldó la decisión y reforzó sus controles.',changes:{integridad:12,reputacion:7,riesgo_legal:-9}},
       {p:25,key:'reporte_demora',story:'La investigación retrasó el proyecto y generó costos.',changes:{finanzas:-8,integridad:9,riesgo_legal:-4}}
