@@ -109,7 +109,10 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&
 const clamp=n=>Math.max(0,Math.min(100,n));
 const status=s=>$('status').textContent=s;
 const btn=(title,fn)=>`<button class="btn" onclick="${fn}">${title}</button>`;
-const current=()=>ROUND[state.round];
+const NEW_ROUND_ORDER=[1,2,3,4,5,6,7,8,9,18,10,11,12,13,19,14,15,16,17];
+const LEGACY_ROUND_ORDER=Array.from({length:18},(_,index)=>index+1);
+const roundOrder=()=>state.roundOrder??LEGACY_ROUND_ORDER;
+const current=()=>({...ROUND[roundOrder()[state.round]-1],position:state.round+1});
 
 function corruptionOutcomes(){
   return [
@@ -134,7 +137,8 @@ ROUND[1].options.push(scenarioOption('D','Suspender el trato y pedir revisión i
 ROUND.push(
   {n:16,art:14,theme:'Comodín de historial',title:'Las decisiones regresan',scenario:'Cada equipo recibe en su celular un dilema basado en sus decisiones anteriores.',options:[],personal:true},
   {n:17,art:2,theme:'Comodín de corrupción',title:'Una propuesta indebida',scenario:'La situación de cada empresa determina qué propuesta recibe en su celular.',options:[],personal:true},
-  {n:18,art:15,theme:'Comodín de prensa',title:'Una buena noticia',scenario:'Un periodista publicó algo positivo sobre cada empresa. Esta ronda se resuelve sin votación.',options:[],press:true}
+  {n:18,art:15,theme:'Comodín de prensa',title:'Una buena noticia',scenario:'Un periodista publicó algo positivo sobre cada empresa. Esta ronda se resuelve sin votación.',options:[],press:true},
+  {n:19,art:13,theme:'Comodín de prensa',title:'En los titulares',scenario:'La nota de cada empresa tiene 50% de probabilidad de ser favorable y 50% de ser crítica. No hay votación.',options:[],press:true,mixedPress:true}
 );
 
 function questionFor(player){
@@ -190,18 +194,31 @@ const PRESS_STORIES={
   datos:'¡Felicidades! Un periodista reconocido escribió una nota en la que reconoció las mejoras en el manejo de datos.',
   riesgo_legal:'¡Felicidades! Un periodista reconocido escribió una nota en la que elogió los avances de cumplimiento de la empresa.'
 };
-function pressOutcome(player,used){
-  const benefits=Object.keys(PRESS_STORIES).flatMap(key=>{
-    const room=key==='riesgo_legal'?player.stats[key]:100-player.stats[key];
+const CRITICAL_PRESS_STORIES={
+  finanzas:'Un periodista cuestionó la estabilidad financiera de la empresa.',
+  reputacion:'Un periodista publicó quejas de clientes sobre el servicio de la empresa.',
+  integridad:'Un periodista cuestionó la transparencia del consejo.',
+  empleados:'Un periodista documentó el deterioro de las condiciones de trabajo.',
+  sostenibilidad:'Un periodista señaló deficiencias en el desempeño ambiental de la empresa.',
+  datos:'Un periodista señaló fallas en la protección de datos de la empresa.',
+  riesgo_legal:'Un periodista informó sobre nuevos cuestionamientos de cumplimiento.'
+};
+function pressOutcome(player,used,mixed=false){
+  const critical=mixed&&Math.random()<.5;
+  const stories=critical?CRITICAL_PRESS_STORIES:PRESS_STORIES;
+  const title=critical?'Nota crítica de prensa':'Reconocimiento de prensa';
+  const benefits=Object.keys(stories).flatMap(key=>{
+    const decreases=(key==='riesgo_legal')!==critical;
+    const room=decreases?player.stats[key]:100-player.stats[key];
     return Array.from({length:Math.min(24,room)},(_,index)=>({key,amount:index+1}));
   });
   const fresh=benefits.filter(({key,amount})=>!used.some(entry=>entry.key===key||entry.amount===amount));
   const distinct=benefits.filter(({key,amount})=>!used.some(entry=>entry.key===key&&entry.amount===amount));
   const pool=fresh.length?fresh:distinct.length?distinct:benefits;
-  if(!pool.length)return {key:'prensa',story:'¡Felicidades! Un periodista reconocido escribió una nota en la que elogió los indicadores de la empresa, que ya estaban en su mejor nivel.',changes:{}};
+  if(!pool.length)return {key:'prensa',title,story:critical?'Un periodista publicó una nota crítica. Los indicadores ya estaban en su límite inferior de desempeño.':'¡Felicidades! Un periodista reconocido escribió una nota elogiando a la empresa. Sus indicadores ya estaban en su mejor nivel.',changes:{}};
   const {key,amount}=pool[Math.floor(Math.random()*pool.length)];
   used.push({key,amount});
-  return {key:'prensa_'+key,story:PRESS_STORIES[key],changes:{[key]:key==='riesgo_legal'?-amount:amount}};
+  return {key:'prensa_'+key,title,story:stories[key],changes:{[key]:(key==='riesgo_legal')!==critical?-amount:amount}};
 }
 const qs=new URLSearchParams(location.search);
 const TEAM_ICONS=[["Escudo","M12 2l8 4v6c0 5-8 10-8 10s-8-5-8-10V6z M8 12l3 3 5-6"],["Montaña","M2 20l7-13 4 7 3-5 6 11z M7 11l2 2 2-2"],["Faro","M4 21h16 M8 21l2-12h4l2 12 M9 9V6l3-3 3 3v3 M2 7h4m12 0h4"],["Brújula","M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M16 8l-2 6-6 2 2-6z"],["Ancla","M12 8v14 M8 12h8 M3 15c0 4 4 7 9 7s9-3 9-7 M12 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],["Ola","M2 17c4-1 4-7 10-9 4-2 8 0 10 3-5-2-7 1-6 4 1 2 4 2 6 1 M2 21c3-2 5-2 8 0s5 2 8 0l4-1"],["Hoja","M3 21l12-12 M7 17C1 8 11 3 21 3c0 10-5 20-14 14z"],["Árbol","M12 2l5 7h-3l5 6h-4l5 5H4l5-5H5l5-6H7z M12 20v3"],["Flama","M12 2c2 6 8 8 8 13a8 8 0 0 1-16 0c0-3 2-6 4-8l1 5c3-3 4-6 3-10z M12 22c-4-3-3-6 0-9 3 3 4 6 0 9z"],["Rayo","M13 2L4 14h7l-1 8 10-13h-7z"],["Sol","M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z M12 2v2m0 16v2M2 12h2m16 0h2M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"],["Luna","M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11z"],["Saturno","M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M5 10c-3 2-4 4-3 5 2 2 19-2 20-6 1-2-3-2-5-2"],["Cometa","M3 21l6-6 M2 15l4-4 M9 22l4-4 M11 13a6 6 0 1 1 8-8 6 6 0 0 1-8 8z"],["Cohete","M9 15l-3-3c3-6 8-9 15-9 0 7-3 12-9 15z M7 13l-4 1-1 4 6-1m3 0-1 5 4-2 1-5 M15 8h2v2h-2z"],["Cristal","M6 4h12l4 6-10 11L2 10z M2 10h20 M6 4l3 6 3 11 3-11 3-6"],["Corona","M3 6l5 5 4-7 4 7 5-5-2 13H5z M5 16h14"],["Trofeo","M7 3h10v7a5 5 0 0 1-10 0z M7 5H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4m-5 3v5m-4 1h8"],["Diana","M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z M12 12h.01"],["Torre","M5 21h14l-2-7V9l2-2V3h-4v3h-2V3h-2v3H9V3H5v4l2 2v5z M7 10h10 M7 14h10"],["Puente","M2 19h20 M5 19V6m14 13V6 M2 12c3 3 5 3 10-3 5 6 7 6 10 3 M9 13v6m6-6v6"],["Engrane","M9 3h6l1 3 3 1 2 4-2 3v3l-3 3-4-1-4 1-3-3v-3l-2-3 2-4 3-1z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],["Circuito","M7 7h10v10H7z M10 10h4v4h-4z M9 2v5m6-5v5m-6 10v5m6-5v5M2 9h5m-5 6h5m10-6h5m-5 6h5"],["Diamante estelar","M12 2l2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"],["Flecha","M3 18l6-6 4 4 8-10 M15 6h6v6"],["Pirámide","M12 3l10 16H2z M12 3l3 16 M6 13h12"],["Colmena","M12 2l9 5v10l-9 5-9-5V7z M3 7l9 5 9-5 M12 12v10"],["Ala","M2 16c5-9 13-12 20-12-2 4-5 6-9 7l5-1c-2 4-6 5-9 5l4 1c-3 3-8 4-11 0z"],["Lince","M3 4l6 4h6l6-4-1 12-8 5-8-5z M7 12l3 1m4 0 3-1m-6 4h2"],["Serpiente","M4 20h10a4 4 0 0 0 0-8H8a3 3 0 0 1 0-6h4l2-3 6 3-6 4-2-4 M17 6h.01"]];
@@ -256,7 +273,8 @@ function startHost(saved=null){
   if(typeof Peer==='undefined'){status('No se cargó la conexión');view().innerHTML='<div class="panel"><p>Comprueba tu conexión a internet.</p><button class="btn" onclick="location.reload()">Reintentar</button></div>';return;}
   role='host';
   room=saved?.room||Array.from(crypto.getRandomValues(new Uint8Array(6)),n=>'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[n%36]).join('');
-  state=saved?.state||{phase:'lobby',round:0,players:{},submitted:{},results:{},logs:[]};
+  state=saved?.state||{phase:'lobby',round:0,players:{},submitted:{},results:{},logs:[],roundOrder:NEW_ROUND_ORDER};
+  if(state.phase==='lobby'&&!state.roundOrder)state.roundOrder=NEW_ROUND_ORDER;
   saveHost();
   renderHost();
   connectHost();
@@ -337,7 +355,7 @@ function sendState(conn){
   send(conn,{type:'state',phase:state.phase,round:state.round,
     question:question?{...question,options:question.options.map(({id,title,desc})=>({id,title,desc}))}:null,
     profile:state.players[conn.playerId] ? {name:state.players[conn.playerId].name,icon:state.players[conn.playerId].icon??0} : null,
-    count:allJoined(),voted:Object.keys(state.submitted).length,
+    roundCount:roundOrder().length,count:allJoined(),voted:Object.keys(state.submitted).length,
     choice:state.submitted[conn.playerId]||null,
     leaderboard:leaderboard(),report:state.phase==='finished'&&state.players[conn.playerId]?companyReport(state.players[conn.playerId]):null,results:state.phase==='results'?state.results:null});
 }
@@ -422,7 +440,7 @@ function handlePlayerMessage(msg){
 }
 function allJoined(){return Object.keys(state.players).length}
 function startRound(){if(!allJoined()){alert('Necesitas al menos un equipo.');return}state.phase='question';state.submitted={};state.results={};if(current().press){reveal();return}saveHost();broadcast();renderHost()}
-function nextRound(){if(state.round===ROUND.length-1){state.phase='finished';saveHost();broadcast();renderHost();window.scrollTo(0,0);return}state.round++;startRound();window.scrollTo(0,0)}
+function nextRound(){if(state.round===roundOrder().length-1){state.phase='finished';saveHost();broadcast();renderHost();window.scrollTo(0,0);return}state.round++;startRound();window.scrollTo(0,0)}
 function pickOutcome(option){const roll=1+Math.floor(Math.random()*100);let a=0;for(const out of option.outcomes){a+=out.p;if(roll<=a)return{...out,roll}}return{...option.outcomes[option.outcomes.length-1],roll}}
 const SCORE_WEIGHTS={finanzas:20,reputacion:15,integridad:30,empleados:12,sostenibilidad:12,datos:11,riesgo_legal:-25};
 function computeScore(p){
@@ -439,11 +457,11 @@ function auditFollowUp(player,choice,outcome){
   }
   return {...outcome,story:outcome.story+' La revisión parcial dejó abierta la alerta de la ronda 2.'};
 }
-function reveal(){if(state.phase!=='question')return;const press=current().press,used=[];const pending=press?[]:Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted&&!press){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=press?{title:'Reconocimiento de prensa'}:questionFor(p).options.find(o=>o.id===voted),out=press?pressOutcome(p,used):auditFollowUp(p,voted,pickOutcome(opt));for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.total=computeScore(p);p.history.push({round:state.round+1,choice:voted,title:opt.title,event:out.key,roll:out.roll,story:out.story,changes:out.changes,impact:p.total-before,followUp:out.followUp});state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:opt.title,automatic:!!press,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
+function reveal(){if(state.phase!=='question')return;const press=current().press,used=[];const pending=press?[]:Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted&&!press){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=press?{title:'Reconocimiento de prensa'}:questionFor(p).options.find(o=>o.id===voted),out=press?pressOutcome(p,used,current().mixedPress):auditFollowUp(p,voted,pickOutcome(opt));for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.total=computeScore(p);p.history.push({round:current().n,position:state.round+1,choice:voted,title:out.title??opt.title,event:out.key,roll:out.roll,story:out.story,changes:out.changes,impact:p.total-before,followUp:out.followUp});state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:out.title??opt.title,automatic:!!press,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
 function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,icon:p.icon??0,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
 function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${teamName(p)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
-function roundVisual(q){
-  return `<div class="round-visual round-art-${q.art??q.n}"><span>Ronda ${q.n} de ${ROUND.length} · ${esc(q.theme)}</span></div>`;
+function roundVisual(q,total=roundOrder().length){
+  return `<div class="round-visual round-art-${q.art??q.n}"><span>Ronda ${q.position??q.n} de ${total} · ${esc(q.theme)}</span></div>`;
 }
 function roundOption(o,interactive=false,index=0){
   const delay=`style="--option-index:${index}"`;
@@ -481,7 +499,7 @@ function companyReport(player){
     for(const [key,value] of Object.entries(entry.changes??{}))stats[key]=clamp((stats[key]??0)+value);
     if(!entry.choice)continue;
     const title=entry.title??ROUND[entry.round-1]?.options.find(option=>option.id===entry.choice)?.title??'Opción '+entry.choice;
-    decisions.push({round:entry.round,title,story:entry.story,impact:entry.impact??computeScore({stats})-before});
+    decisions.push({round:entry.position??entry.round,title,story:entry.story,impact:entry.impact??computeScore({stats})-before});
   }
   decisions.sort((a,b)=>b.impact-a.impact||a.round-b.round);
   const best=decisions.find(entry=>entry.impact>0);
@@ -510,7 +528,7 @@ function renderRoundResults(){
   view().innerHTML=`<div class="round-close">
     <section class="round-reveal round-art-${current().art??current().n} ${impact<0?'setback':''}" aria-labelledby="reveal-name">
       <div class="reveal-backdrop" aria-hidden="true"></div>
-      <div class="reveal-label">Ronda ${state.round+1} de ${ROUND.length} · ${label}</div>
+      <div class="reveal-label">Ronda ${state.round+1} de ${roundOrder().length} · ${label}</div>
       <h1 class="reveal-name" id="reveal-name">${standout?teamName(standout):'Cierre de ronda'}</h1>
       <p class="reveal-story">${esc(story)}</p>
       ${standout?`<p class="impact-comment"><strong>${esc(standout.title)}.</strong> ${esc(decisionComment(standout))}</p>`:''}
@@ -520,7 +538,7 @@ function renderRoundResults(){
       <div class="score-axis muted" aria-hidden="true"><span>Equipo</span><div class="score-axis-track"><span>−25</span><span>0</span><span>100</span></div><span></span></div>
       <div class="score-lines" tabindex="0" aria-label="Puntuación por equipo">${roundRanking()}</div>
     </section>
-    <div class="round-controls"><div><button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div><button class="btn" onclick="nextRound()">${state.round===ROUND.length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
+    <div class="round-controls"><div><button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div><button class="btn" onclick="nextRound()">${state.round===roundOrder().length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
     <dialog class="round-dialog" id="score-rule"><h2>Cómo se calculan los puntos</h2><p>Se redondea la suma ponderada al entero más cercano. Los indicadores van de 0 a 100.</p><p>${esc(formula)}.</p><form method="dialog"><button class="btn alt">Cerrar</button></form></dialog>
     <dialog class="round-dialog" id="round-details"><h2>Consecuencias por equipo</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>
       ${results.map(result=>`<div class="result-card"><strong>${teamName(result)} · ${result.missing?'No votó':esc(result.automatic?result.title:result.choice+'. '+result.title)}</strong><p>${esc(result.missing?'Sin consecuencias en esta ronda.':result.story)}</p><p class="notice">${esc(decisionComment(result))}</p>${result.missing?'':`<div class="tiny muted">${result.automatic?'':`Tirada: ${result.roll}/100 · Probabilidad: ${result.prob}% · `}${Object.entries(result.effects??result.changes).map(([key,value])=>esc(LABEL[key]||key)+': '+(value>=0?'+':'')+value).join(' · ')}</div>`}</div>`).join('')}
@@ -530,7 +548,7 @@ function renderRoundResults(){
 function renderHost(){if(role!=='host')return;enterScreen('host:'+state.phase+':'+state.round,state.phase);$('host-controls').hidden=false;document.body.classList.toggle('round-results',state.phase==='results');const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
 if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map((o,index)=>roundOption(o,false,index)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
 if(state.phase==='results'){renderRoundResults();return}
-if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="notice">La puntuación es didáctica: un buen resultado financiero no borra actos de corrupción, violaciones de derechos o daños ambientales.</div><div class="space"></div><button class="btn alt" onclick="$('final-reports').showModal()">Informes por empresa</button> <button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div><dialog class="round-dialog" id="final-reports"><h2>Informes por empresa</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>${leaderboard().map(team=>`<details class="result-card"><summary>${teamName(team)} · ${team.total} pts</summary>${renderCompanyReport(companyReport(state.players[team.id]))}</details>`).join('')}</dialog>`}}
+if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="space"></div><button class="btn alt" onclick="$('final-reports').showModal()">Informes por empresa</button> <button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div><dialog class="round-dialog" id="final-reports"><h2>Informes por empresa</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>${leaderboard().map(team=>`<details class="result-card"><summary>${teamName(team)} · ${team.total} pts</summary>${renderCompanyReport(companyReport(state.players[team.id]))}</details>`).join('')}</dialog>`}}
 function renderPlayerLobby(snapshot){
   if(!$('lobby-profile')){
     view().innerHTML=`<section class="panel lobby-editor">
@@ -561,7 +579,7 @@ function saveLobbyProfile(event){
   $('profile-feedback').textContent='Guardando…';
   send(hostConn,{type:'profile',name:profile.get('team'),icon:Number(profile.get('icon'))});
 }
-function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;enterScreen('player:'+(snap?.phase??'waiting')+':'+(snap?.round??''),snap?.phase??'waiting');if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map((o,index)=>roundOption(o,true,index)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.automatic?'Premio':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1><h2>Clasificación final</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>${snap.report?`<section class="panel"><h2>Informe final de tu empresa</h2>${renderCompanyReport(snap.report)}</section>`:''}`}}
+function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;enterScreen('player:'+(snap?.phase??'waiting')+':'+(snap?.round??''),snap?.phase??'waiting');if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q,snap.roundCount)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map((o,index)=>roundOption(o,true,index)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.automatic?'Nota':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1><h2>Clasificación final</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>${snap.report?`<section class="panel"><h2>Informe final de tu empresa</h2>${renderCompanyReport(snap.report)}</section>`:''}`}}
 function vote(option){
   if(client.chosen||client.pending||!hostConn?.open)return;
   const round=client.snapshot.round;
