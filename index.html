@@ -69,6 +69,13 @@ body.round-results .top{padding:0 0 6px}
 .host-controls summary{cursor:pointer;list-style:none;text-align:center}
 .host-controls summary::-webkit-details-marker{display:none}
 .host-controls button{position:absolute;right:0;top:calc(100% + 6px);white-space:nowrap;box-shadow:0 8px 24px #0008}
+.lobby-editor{max-width:560px;margin:auto}
+.lobby-avatar{font-size:36px;line-height:1.25}
+.avatar-picker{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:8px 0 14px}
+.avatar-option{display:grid;place-items:center;position:relative;min-height:37px;background:#192744;border:1px solid #395071;border-radius:8px;font-size:22px;cursor:pointer}
+.avatar-option input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.avatar-option:has(input:checked){background:#163b46;border-color:#5bd5c4}
+.avatar-option:has(input:focus-visible){outline:2px solid white;outline-offset:2px}
 </style><link rel="stylesheet" href="round-art.css"></head><body><main class="wrap"><header class="top"><div class="logo">EL <span>CEO</span> <small style="font-size:12px;font-weight:500;letter-spacing:0;color:#a8b6d0">15 DECISIONES</small></div><div class="header-actions"><span id="status" class="pill">Sin conectar</span><details class="host-controls" id="host-controls" hidden><summary class="pill" aria-label="Opciones del anfitrión" title="Opciones del anfitrión">⋯</summary><button class="btn danger" onclick="restartGame()">Reiniciar juego</button></details></div></header><div id="view"></div></main>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -85,6 +92,18 @@ const status=s=>$('status').textContent=s;
 const btn=(title,fn)=>`<button class="btn" onclick="${fn}">${title}</button>`;
 const current=()=>ROUND[state.round];
 const qs=new URLSearchParams(location.search);
+const TEAM_ICONS=[
+  ['🦊','Zorro'],['🦁','León'],['🐯','Tigre'],['🐺','Lobo'],['🦅','Águila'],['🦉','Búho'],
+  ['🐼','Panda'],['🐻','Oso'],['🐙','Pulpo'],['🦈','Tiburón'],['🐬','Delfín'],['🐲','Dragón'],
+  ['🦋','Mariposa'],['🐝','Abeja'],['🦄','Unicornio'],['🦖','Dinosaurio'],['🤖','Robot'],['👾','Alien'],
+  ['🚀','Cohete'],['🛸','Ovni'],['⚡','Rayo'],['🔥','Fuego'],['🌙','Luna'],['☀️','Sol'],
+  ['🌈','Arcoíris'],['🌊','Ola'],['💎','Diamante'],['👑','Corona'],['🏆','Trofeo'],['🎯','Diana']
+];
+const validIcon=index=>Number.isInteger(index)&&index>=0&&index<TEAM_ICONS.length;
+function teamName(team){
+  const icon=TEAM_ICONS[team.icon??0];
+  return `<span aria-hidden="true">${icon[0]}</span> ${esc(team.name)}`;
+}
 const HOST_SAVE='ceo-host-session-v1';
 const playerSave=()=> 'ceo-team-v1:'+room;
 function saveHost(){localStorage.setItem(HOST_SAVE,JSON.stringify({room,state}));}
@@ -190,6 +209,7 @@ function sendState(conn){
   const question=state.phase==='question'?current():null;
   send(conn,{type:'state',phase:state.phase,round:state.round,
     question:question?{...question,options:question.options.map(({id,title,desc})=>({id,title,desc}))}:null,
+    profile:state.players[conn.playerId] ? {name:state.players[conn.playerId].name,icon:state.players[conn.playerId].icon??0} : null,
     count:allJoined(),voted:Object.keys(state.submitted).length,
     choice:state.submitted[conn.playerId]||null,
     leaderboard:leaderboard(),results:state.phase==='results'?state.results:null});
@@ -205,11 +225,28 @@ function handleHostMessage(conn,msg){
       if(Object.values(state.players).some(p=>p.name.toLowerCase()===name.toLowerCase())){
         send(conn,{type:'error',message:'Ese nombre ya está ocupado.'});return;
       }
-      state.players[id]={...freshPlayer(name),id};
+      state.players[id]={...freshPlayer(name),id,icon:0};
       saveHost();
     }
     conn.playerId=id;
     send(conn,{type:'welcome',player:state.players[id]});
+    broadcast();
+    renderHost();
+  }
+  if(msg.type==='profile'&&conn.playerId){
+    const player=state.players[conn.playerId];
+    if(!player||state.phase!=='lobby')return;
+    const name=typeof msg.name==='string'?msg.name.trim():'';
+    if(name.length<2||name.length>28||!validIcon(msg.icon)){
+      send(conn,{type:'profile-error',message:'Escribe un nombre de 2 a 28 caracteres y elige un ícono.'});return;
+    }
+    if(Object.values(state.players).some(other=>other.id!==player.id&&other.name.toLowerCase()===name.toLowerCase())){
+      send(conn,{type:'profile-error',message:'Ese nombre ya está ocupado.'});return;
+    }
+    player.name=name;
+    player.icon=msg.icon;
+    saveHost();
+    send(conn,{type:'profile-saved'});
     broadcast();
     renderHost();
   }
@@ -241,7 +278,15 @@ function handlePlayerMessage(msg){
     $('joincode').value=room;
     $('joinname').value=client.name;
     $('joinerror').textContent=msg.message;
+  }else if(msg.type==='profile-error'||msg.type==='profile-saved'){
+    const feedback=$('profile-feedback');
+    if(feedback)feedback.textContent=msg.type==='profile-saved'?'Cambios guardados.':msg.message;
   }else if(msg.type==='state'){
+    if(msg.profile){
+      client.name=msg.profile.name;
+      client.icon=msg.profile.icon;
+      localStorage.setItem(playerSave(),client.name);
+    }
     if(client.snapshot?.round!==msg.round||msg.choice||msg.phase!=='question')client.pending=null;
     client.chosen=msg.choice;
     client.snapshot=msg;
@@ -256,9 +301,9 @@ const SCORE_WEIGHTS={finanzas:20,reputacion:15,integridad:30,empleados:12,sosten
 function computeScore(p){
   return Math.round(Object.entries(SCORE_WEIGHTS).reduce((sum,[key,weight])=>sum+p.stats[key]*weight,0)/100);
 }
-function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
-function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
-function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${esc(p.name)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
+function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
+function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,icon:p.icon??0,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
+function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${teamName(p)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
 function roundVisual(q){
   return `<div class="round-visual round-art-${q.n}"><span>Ronda ${q.n} de ${ROUND.length} · ${esc(q.theme)}</span></div>`;
 }
@@ -275,7 +320,7 @@ function roundRanking(){
   return leaderboard().map((team,index)=>{
     const left=(Math.min(team.total,0)+25)/125*100;
     const width=Math.abs(team.total)/125*100;
-    return `<div class="score-row"><strong class="score-name" title="${esc(team.name)}">${index+1}. ${esc(team.name)}</strong><div class="score-track" aria-hidden="true"><i class="score-fill ${team.total<0?'negative':''}" style="--left:${left}%;--width:${width}%;--rank-delay:${Math.min(index,8)*55}ms"></i></div><strong class="score-value">${team.total} pts</strong></div>`;
+    return `<div class="score-row"><strong class="score-name" title="${esc(team.name)}">${index+1}. ${teamName(team)}</strong><div class="score-track" aria-hidden="true"><i class="score-fill ${team.total<0?'negative':''}" style="--left:${left}%;--width:${width}%;--rank-delay:${Math.min(index,8)*55}ms"></i></div><strong class="score-value">${team.total} pts</strong></div>`;
   }).join('');
 }
 function decisionComment(result){
@@ -298,7 +343,7 @@ function renderRoundResults(){
     <section class="round-reveal round-art-${state.round+1} ${impact<0?'setback':''}" aria-labelledby="reveal-name">
       <div class="reveal-backdrop" aria-hidden="true"></div>
       <div class="reveal-label">Ronda ${state.round+1} de ${ROUND.length} · ${label}</div>
-      <h1 class="reveal-name" id="reveal-name">${esc(standout?.name??'Cierre de ronda')}</h1>
+      <h1 class="reveal-name" id="reveal-name">${standout?teamName(standout):'Cierre de ronda'}</h1>
       <p class="reveal-story">${esc(story)}</p>
       ${standout?`<p class="impact-comment"><strong>${esc(standout.title)}.</strong> ${esc(decisionComment(standout))}</p>`:''}
     </section>
@@ -310,7 +355,7 @@ function renderRoundResults(){
     <div class="round-controls"><div><button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div><button class="btn" onclick="nextRound()">${state.round===ROUND.length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
     <dialog class="round-dialog" id="score-rule"><h2>Cómo se calculan los puntos</h2><p>Se redondea la suma ponderada al entero más cercano. Los indicadores van de 0 a 100.</p><p>${esc(formula)}.</p><form method="dialog"><button class="btn alt">Cerrar</button></form></dialog>
     <dialog class="round-dialog" id="round-details"><h2>Consecuencias por equipo</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>
-      ${results.map(result=>`<div class="result-card"><strong>${esc(result.name)} · ${result.missing?'No votó':esc(result.choice+'. '+result.title)}</strong><p>${esc(result.missing?'Sin consecuencias en esta ronda.':result.story)}</p>${result.missing?'':`<div class="tiny muted">Tirada: ${result.roll}/100 · Probabilidad: ${result.prob}% · ${Object.entries(result.changes).map(([key,value])=>esc(LABEL[key]||key)+': '+(value>=0?'+':'')+value).join(' · ')}</div>`}</div>`).join('')}
+      ${results.map(result=>`<div class="result-card"><strong>${teamName(result)} · ${result.missing?'No votó':esc(result.choice+'. '+result.title)}</strong><p>${esc(result.missing?'Sin consecuencias en esta ronda.':result.story)}</p>${result.missing?'':`<div class="tiny muted">Tirada: ${result.roll}/100 · Probabilidad: ${result.prob}% · ${Object.entries(result.changes).map(([key,value])=>esc(LABEL[key]||key)+': '+(value>=0?'+':'')+value).join(' · ')}</div>`}</div>`).join('')}
     </dialog>
   </div>`;
 }
@@ -318,7 +363,37 @@ function renderHost(){if(role!=='host')return;$('host-controls').hidden=false;do
 if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map(o=>roundOption(o)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
 if(state.phase==='results'){renderRoundResults();return}
 if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="notice">La puntuación es didáctica: un buen resultado financiero no borra actos de corrupción, violaciones de derechos o daños ambientales.</div><div class="space"></div><button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div>`}}
-function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${esc(client.name)} · Sala ${room}</div>`;if(snap.phase==='lobby'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Estás dentro</h1><p>Espera a que el anfitrión comience la primera ronda.</p><span class="pill">${snap.count} equipos listos</span></div>`;return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map(o=>roundOption(o,true)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice">${mine?.missing?'No hubo cambios en tus indicadores.':'Se aplicaron las consecuencias a tu equipo.'}</div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}</div>`}}
+function renderPlayerLobby(snapshot){
+  if(!$('lobby-profile')){
+    view().innerHTML=`<section class="panel lobby-editor">
+      <div class="tag">Sala ${room} · Lobby de espera</div>
+      <h1 class="hero">Estás dentro</h1>
+      <p class="muted">Personaliza tu equipo antes de que el anfitrión empiece.</p>
+      <p id="lobby-preview" class="lobby-avatar"></p>
+      <form id="lobby-profile" onsubmit="saveLobbyProfile(event)">
+        <label for="lobby-name">Nombre de tu equipo</label>
+        <input id="lobby-name" class="input" name="team" minlength="2" maxlength="28" required value="${esc(client.name)}">
+        <fieldset style="border:0;padding:0;margin:12px 0 0;min-width:0">
+          <legend>Elige un ícono</legend>
+          <div class="avatar-picker">${TEAM_ICONS.map(([icon,label],index)=>`<label class="avatar-option" title="${label}"><input type="radio" name="icon" aria-label="${label}" value="${index}" ${index===(client.icon??0)?'checked':''}><span aria-hidden="true">${icon}</span></label>`).join('')}</div>
+        </fieldset>
+        <button class="btn" type="submit">Guardar cambios</button>
+        <p id="profile-feedback" class="muted" role="status"></p>
+      </form>
+      <span id="lobby-count" class="pill"></span>
+    </section>`;
+  }
+  $('lobby-preview').innerHTML=teamName(client);
+  $('lobby-count').textContent=snapshot.count+(snapshot.count===1?' equipo listo':' equipos listos');
+}
+function saveLobbyProfile(event){
+  event.preventDefault();
+  if(client.snapshot?.phase!=='lobby'||!hostConn?.open)return;
+  const profile=new FormData(event.currentTarget);
+  $('profile-feedback').textContent='Guardando…';
+  send(hostConn,{type:'profile',name:profile.get('team'),icon:Number(profile.get('icon'))});
+}
+function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map(o=>roundOption(o,true)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice">${mine?.missing?'No hubo cambios en tus indicadores.':'Se aplicaron las consecuencias a tu equipo.'}</div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>`}}
 function vote(option){
   if(client.chosen||client.pending||!hostConn?.open)return;
   const round=client.snapshot.round;
