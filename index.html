@@ -316,6 +316,7 @@ function startHost(saved=null){
   if(state.phase==='lobby')state.roundOrder=NEW_ROUND_ORDER;
   saveHost();
   renderHost();
+  scheduleAdvance();
   connectHost();
 }
 function connectHost(attempt=0){
@@ -437,6 +438,7 @@ function handleHostMessage(conn,msg){
   if(msg.type==='vote'&&conn.playerId){
     if(state.phase==='question'&&msg.round===state.round&&questionFor(state.players[conn.playerId]).options.some(o=>o.id===msg.option)&&!state.submitted[conn.playerId]){
       state.submitted[conn.playerId]=msg.option;
+      if(Object.keys(state.players).every(id=>state.submitted[id])){reveal(true);return;}
       saveHost();
       broadcast();
       renderHost();
@@ -479,7 +481,28 @@ function handlePlayerMessage(msg){
 }
 function allJoined(){return Object.keys(state.players).length}
 function startRound(){if(!allJoined()){alert('Necesitas al menos un equipo.');return}state.phase='question';state.submitted={};state.results={};if(current().press){reveal();return}saveHost();broadcast();renderHost()}
-function nextRound(){if(state.round===roundOrder().length-1){state.phase='finished';saveHost();broadcast();renderHost();window.scrollTo(0,0);return}state.round++;startRound();window.scrollTo(0,0)}
+let advanceTimer;
+function scheduleAdvance(){
+  clearInterval(advanceTimer);
+  if(role!=='host'||state.phase!=='results'||!state.advanceAt)return;
+  const update=()=>{
+    const seconds=Math.max(0,Math.ceil((state.advanceAt-Date.now())/1000));
+    const label=$('advance-countdown');
+    if(label)label.textContent='Avance automático en '+seconds+' s';
+    if(!seconds)nextRound();
+  };
+  advanceTimer=setInterval(update,250);
+  update();
+}
+function pauseAdvance(){
+  if(role!=='host'||state.phase!=='results'||!state.advanceAt)return;
+  clearInterval(advanceTimer);
+  delete state.advanceAt;
+  saveHost();
+  $('advance-countdown')?.remove();
+  $('pause-advance')?.remove();
+}
+function nextRound(){if(role!=='host'||state.phase!=='results')return;clearInterval(advanceTimer);delete state.advanceAt;if(state.round===roundOrder().length-1){state.phase='finished';saveHost();broadcast();renderHost();window.scrollTo(0,0);return}state.round++;startRound();window.scrollTo(0,0)}
 function pickOutcome(option){const roll=1+Math.floor(Math.random()*100);let a=0;for(const out of option.outcomes){a+=out.p;if(roll<=a)return{...out,roll}}return{...option.outcomes[option.outcomes.length-1],roll}}
 const SCORE_WEIGHTS={finanzas:20,reputacion:15,integridad:30,empleados:12,sostenibilidad:12,datos:11,riesgo_legal:-25};
 function computeScore(p){
@@ -496,7 +519,7 @@ function auditFollowUp(player,choice,outcome){
   }
   return {...outcome,story:outcome.story+' La revisión parcial dejó abierta la alerta de la ronda 2.'};
 }
-function reveal(){if(state.phase!=='question')return;const press=current().press,used=[];const pending=press?[]:Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted&&!press){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=press?{title:'Reconocimiento de prensa'}:questionFor(p).options.find(o=>o.id===voted),out=press?pressOutcome(p,used,current().mixedPress):auditFollowUp(p,voted,pickOutcome(opt));for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.total=computeScore(p);p.history.push({round:current().n,position:state.round+1,choice:voted,title:out.title??opt.title,event:out.key,roll:out.roll,story:out.story,changes:out.changes,impact:p.total-before,followUp:out.followUp});state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:out.title??opt.title,automatic:!!press,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
+function reveal(autoAdvance=false){if(state.phase!=='question')return;const press=current().press,used=[];const pending=press?[]:Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted&&!press){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=press?{title:'Reconocimiento de prensa'}:questionFor(p).options.find(o=>o.id===voted),out=press?pressOutcome(p,used,current().mixedPress):auditFollowUp(p,voted,pickOutcome(opt));for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.total=computeScore(p);p.history.push({round:current().n,position:state.round+1,choice:voted,title:out.title??opt.title,event:out.key,roll:out.roll,story:out.story,changes:out.changes,impact:p.total-before,followUp:out.followUp});state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:out.title??opt.title,automatic:!!press,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';if(autoAdvance)state.advanceAt=Date.now()+15000;saveHost();broadcast();renderHost();scheduleAdvance();window.scrollTo(0,0)}
 function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,icon:p.icon??0,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
 function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${teamName(p)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
 function roundVisual(q,total=roundOrder().length){
@@ -577,7 +600,7 @@ function renderRoundResults(){
       <div class="score-axis muted" aria-hidden="true"><span>Equipo</span><div class="score-axis-track"><span>−25</span><span>0</span><span>100</span></div><span></span></div>
       <div class="score-lines" tabindex="0" aria-label="Puntuación por equipo">${roundRanking()}</div>
     </section>
-    <div class="round-controls"><div><button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div><button class="btn" onclick="nextRound()">${state.round===roundOrder().length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
+    <div class="round-controls"><div>${state.advanceAt?`<span id="advance-countdown" class="tiny muted"></span> <button class="btn alt" id="pause-advance" onclick="pauseAdvance()">Pausar avance</button> `:''}<button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div><button class="btn" onclick="nextRound()">${state.round===roundOrder().length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
     <dialog class="round-dialog" id="score-rule"><h2>Cómo se calculan los puntos</h2><p>Se redondea la suma ponderada al entero más cercano. Los indicadores van de 0 a 100.</p><p>${esc(formula)}.</p><form method="dialog"><button class="btn alt">Cerrar</button></form></dialog>
     <dialog class="round-dialog" id="round-details"><h2>Consecuencias por equipo</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>
       ${results.map(result=>`<div class="result-card"><strong>${teamName(result)} · ${result.missing?'No votó':esc(result.automatic?result.title:result.choice+'. '+result.title)}</strong><p>${esc(result.missing?'Sin consecuencias en esta ronda.':result.story)}</p><p class="notice">${esc(decisionComment(result))}</p>${result.missing?'':`<div class="tiny muted">${result.automatic?'':`Tirada: ${result.roll}/100 · Probabilidad: ${result.prob}% · `}${Object.entries(result.effects??result.changes).map(([key,value])=>esc(LABEL[key]||key)+': '+(value>=0?'+':'')+value).join(' · ')}</div>`}</div>`).join('')}
