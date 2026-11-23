@@ -15,6 +15,24 @@
 @keyframes round-in{from{opacity:.45;transform:scale(1.025)}to{opacity:1;transform:scale(1)}}
 @media (max-width:720px){.round-visual{aspect-ratio:2.45;margin-bottom:14px}}
 @media (prefers-reduced-motion:reduce){.round-visual::before{animation:none}}
+
+.round-reveal{--reveal-accent:#76f7d6;--reveal-rgb:118,247,214;position:relative;display:grid;align-content:center;justify-items:start;isolation:isolate;min-height:calc(100svh - 105px);overflow:hidden;padding:clamp(24px,7vw,96px);border:1px solid rgba(var(--reveal-rgb),.4);border-radius:24px;background:#0e172d;animation:reveal-enter .6s cubic-bezier(.22,.8,.3,1) both}
+.round-reveal.setback{--reveal-accent:#ff9e89;--reveal-rgb:255,158,137}
+.reveal-backdrop{position:absolute;z-index:-2;inset:0;background-image:linear-gradient(90deg,#070e20f7 12%,#071022b0 60%,#07102265),var(--round-art);background-size:cover;background-position:center;animation:reveal-drift 12s ease-out both}
+.round-reveal::after{content:'';position:absolute;z-index:-1;inset:0;pointer-events:none;background:radial-gradient(ellipse at 20% 95%,rgba(var(--reveal-rgb),.22),transparent 55%);animation:reveal-glow 2.3s ease-out both}
+.reveal-label{color:var(--reveal-accent);font-size:clamp(13px,2vw,19px);font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+.reveal-name{font-size:clamp(42px,8.2vw,114px);line-height:.97;letter-spacing:-.065em;margin:.23em 0;overflow-wrap:anywhere;max-width:100%;animation:reveal-enter .7s .12s both}
+.reveal-story{font-size:clamp(19px,3vw,34px);line-height:1.22;max-width:28ch;margin:0 0 22px;animation:reveal-enter .6s .25s both}
+.reveal-delta{display:inline-block;border:1px solid rgba(var(--reveal-rgb),.45);border-radius:12px;padding:10px 14px;color:var(--reveal-accent);background:#081223b5;font-size:clamp(16px,2.6vw,24px);font-weight:850;animation:reveal-enter .6s .4s both}
+.reveal-jump{margin-top:24px}
+.round-board{margin-top:16px;scroll-margin-top:16px}
+.round-board .leader{grid-template-columns:35px minmax(0,1fr) auto auto}
+.round-board.rank-visible .leader{animation:reveal-enter .5s both;animation-delay:var(--rank-delay)}
+.rank-move{font-size:13px;font-weight:800;white-space:nowrap}
+@keyframes reveal-enter{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes reveal-drift{from{transform:scale(1.08)}to{transform:scale(1)}}
+@keyframes reveal-glow{from{opacity:.25}45%{opacity:1}to{opacity:.7}}
+@media(prefers-reduced-motion:reduce){.round-reveal,.round-reveal::after,.reveal-backdrop,.reveal-name,.reveal-story,.reveal-delta,.round-board.rank-visible .leader{animation:none}}
 </style><link rel="stylesheet" href="round-art.css"></head><body><main class="wrap"><header class="top"><div class="logo">EL <span>CEO</span> <small style="font-size:12px;font-weight:500;letter-spacing:0;color:#a8b6d0">15 DECISIONES</small></div><span id="status" class="pill">Sin conectar</span></header><div id="view"></div><footer class="foot">Simulación académica ficticia · Los resultados se sortean según probabilidades inventadas · Ganar puntos no justifica conductas ilegales.</footer></main>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -191,10 +209,10 @@ function handlePlayerMessage(msg){
 }
 function allJoined(){return Object.keys(state.players).length}
 function startRound(){if(!allJoined()){alert('Necesitas al menos un equipo.');return}state.phase='question';state.submitted={};state.results={};saveHost();broadcast();renderHost()}
-function nextRound(){if(state.round===ROUND.length-1){state.phase='finished';saveHost();broadcast();renderHost();return}state.round++;startRound()}
+function nextRound(){if(state.round===ROUND.length-1){state.phase='finished';saveHost();broadcast();renderHost();window.scrollTo(0,0);return}state.round++;startRound();window.scrollTo(0,0)}
 function pickOutcome(option){const roll=1+Math.floor(Math.random()*100);let a=0;for(const out of option.outcomes){a+=out.p;if(roll<=a)return{...out,roll}}return{...option.outcomes[option.outcomes.length-1],roll}}
 function computeScore(p){const s=p.stats;return Math.round((s.finanzas*.20+s.reputacion*.15+s.integridad*.30+s.empleados*.12+s.sostenibilidad*.12+s.datos*.11)-s.riesgo_legal*.25)}
-function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,missing:true};continue}const opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total};}state.phase='results';saveHost();broadcast();renderHost()}
+function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,missing:true};continue}const before=computeScore(p),previousTotal=p.total,opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
 function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
 function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${esc(p.name)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
 function roundVisual(q){
@@ -205,9 +223,64 @@ function roundOption(o,interactive=false){
   if(!interactive)return `<div class="result-card round-option">${contents}</div>`;
   return `<button class="option round-option ${client.chosen===o.id?'chosen':''}" onclick="vote('${esc(o.id)}')" ${client.chosen||client.pending?'disabled':''}>${contents}</button>`;
 }
+function roundStandout(results){
+  return results.filter(result=>!result.missing&&Number.isFinite(result.impact))
+    .sort((a,b)=>Math.abs(b.impact)-Math.abs(a.impact)||a.impact-b.impact||a.name.localeCompare(b.name))[0];
+}
+function roundRanking(){
+  const board=leaderboard();
+  const previous=[...board].sort((a,b)=>{
+    const before=p=>state.results[p.id]?.previousTotal??p.total;
+    return before(b)-before(a)||a.name.localeCompare(b.name);
+  });
+  const positions=new Map(previous.map((team,index)=>[team.id,index]));
+  return board.map((team,index)=>{
+    const movement=positions.get(team.id)-index;
+    const movementLabel=movement>0?'Subió '+movement:movement<0?'Bajó '+Math.abs(movement):'Sin cambio';
+    return `<div class="leader" style="--rank-delay:${Math.min(index,8)*55}ms"><div class="rank">${index+1}</div><div><strong>${esc(team.name)}</strong></div><span class="rank-move ${movement>0?'good':movement<0?'warning':'muted'}">${movementLabel}</span><div class="pts">${team.total} pts</div></div>`;
+  }).join('');
+}
+function renderRoundResults(){
+  const results=Object.values(state.results);
+  const standout=roundStandout(results);
+  const impact=standout?.impact??0;
+  const label=impact<0?'Mayor retroceso':impact>0?'Mayor avance':standout?'Equipo destacado':'Consecuencias reveladas';
+  const name=standout?.name??'Cierre de ronda';
+  const story=standout?.story??(results.some(result=>!result.missing)?'Consulta las decisiones y la clasificación de esta ronda.':'Ningún equipo registró una decisión en esta ronda.');
+  view().innerHTML=`<section class="round-reveal round-art-${state.round+1} ${impact<0?'setback':''}" aria-labelledby="reveal-name">
+    <div class="reveal-backdrop" aria-hidden="true"></div>
+    <div class="reveal-label">Ronda ${state.round+1} de ${ROUND.length} · ${label}</div>
+    <h1 class="reveal-name" id="reveal-name">${esc(name)}</h1>
+    <p class="reveal-story">${esc(story)}</p>
+    ${standout?`<div class="reveal-delta">${impact>0?'+':''}${impact} pts de impacto en la ronda</div>`:''}
+    <button class="btn alt reveal-jump" onclick="showRoundRanking()">Ver clasificación ↓</button>
+  </section>
+  <section id="round-ranking" class="panel round-board" tabindex="-1">
+    <div class="flex" style="justify-content:space-between"><h2>Clasificación general</h2><button class="btn" onclick="nextRound()">${state.round===ROUND.length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
+    ${roundRanking()}
+    <hr class="divider">
+    <details><summary>Ver qué le pasó a cada equipo</summary>
+      ${results.map(result=>`<div class="result-card"><strong>${esc(result.name)} · ${result.missing?'No votó':esc(result.choice+'. '+result.title)}</strong><p>${esc(result.missing?'Sin consecuencias en esta ronda.':result.story)}</p>${result.missing?'':`<div class="tiny muted">Tirada: ${result.roll}/100 · Probabilidad: ${result.prob}% · ${Object.entries(result.changes).map(([key,value])=>esc(LABEL[key]||key)+': '+(value>=0?'+':'')+value).join(' · ')}</div>`}</div>`).join('')}
+    </details>
+  </section>`;
+  const ranking=$('round-ranking');
+  if(typeof IntersectionObserver==='function'){
+    const observer=new IntersectionObserver(([entry])=>{
+      if(!entry.isIntersecting)return;
+      ranking.classList.add('rank-visible');
+      observer.disconnect();
+    },{rootMargin:'0px 0px -80px 0px'});
+    observer.observe(ranking);
+  }
+}
+function showRoundRanking(){
+  const ranking=$('round-ranking');
+  ranking.focus({preventScroll:true});
+  ranking.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+}
 function renderHost(){if(role!=='host')return;const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
 if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map(o=>roundOption(o)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
-if(state.phase==='results'){view().innerHTML=`<div class="panel"><div class="tag">Ronda ${state.round+1}/15 · Consecuencias reveladas</div><h1 class="hero">Las decisiones tienen un precio</h1><div class="split"><div><h2>Lo que ocurrió</h2>${Object.values(state.results).map(o=>`<div class="result-card"><strong>${esc(o.name)} — ${o.missing?'No votó':esc(o.choice+'. '+o.title)}</strong><p>${esc(o.missing?'Sin consecuencias en esta ronda.':o.story)}</p>${o.missing?'':`<div class="tiny muted">Tirada: ${o.roll}/100 · Resultado sorteado: ${o.prob}% · ${Object.entries(o.changes).map(([k,v])=>esc(LABEL[k]||k)+': '+(v>=0?'+':'')+v).join(' · ')}</div>`}</div>`).join('')}</div><div><h2>Marcador actualizado</h2>${renderBoard()}<div class="space"></div><button class="btn full" onclick="nextRound()">${state.round===14?'Ver resultado final':'Siguiente ronda →'}</button></div></div></div>`;return}
+if(state.phase==='results'){renderRoundResults();return}
 if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="notice">La puntuación es didáctica: un buen resultado financiero no borra actos de corrupción, violaciones de derechos o daños ambientales.</div><div class="space"></div><button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div>`}}
 function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${esc(client.name)} · Sala ${room}</div>`;if(snap.phase==='lobby'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Estás dentro</h1><p>Espera a que el anfitrión comience la primera ronda.</p><span class="pill">${snap.count} equipos listos</span></div>`;return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map(o=>roundOption(o,true)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice">${mine?.missing?'No hubo cambios en tus indicadores.':'Se aplicaron las consecuencias a tu equipo.'}</div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}</div>`}}
 function vote(option){
