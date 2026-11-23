@@ -118,7 +118,24 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&
 const clamp=n=>Math.max(0,Math.min(100,n));
 const status=s=>$('status').textContent=s;
 const btn=(title,fn)=>`<button class="btn" onclick="${fn}">${title}</button>`;
-const NEW_ROUND_ORDER=[1,2,3,4,5,19,6,7,8,18,9,10,11,12,13,14,15,16,17];
+const CLOSING_ROUNDS=[14,15,16,17];
+const EARLY_DECISIONS=[1,2,3,4,5,6,7,8,9,10,11,12,13,20,21,22];
+const WILDCARDS=[19,18,23,24,25];
+function wildcardCount(decisions){
+  if(decisions<10)return 2;
+  if(decisions<15)return 3;
+  return decisions<20?4:5;
+}
+function buildRoundOrder(decisions){
+  const early=EARLY_DECISIONS.slice(0,decisions-CLOSING_ROUNDS.length);
+  const bonus=WILDCARDS.slice(0,wildcardCount(decisions));
+  const order=[];
+  for(let index=0;index<=early.length;index++){
+    order.push(...bonus.filter((_,slot)=>Math.floor([5,8,11,13,15][slot]*early.length/EARLY_DECISIONS.length)===index));
+    if(index<early.length)order.push(early[index]);
+  }
+  return [...order,...CLOSING_ROUNDS];
+}
 const LEGACY_ROUND_ORDER=Array.from({length:18},(_,index)=>index+1);
 const roundOrder=()=>state.roundOrder??LEGACY_ROUND_ORDER;
 const current=()=>({...ROUND[roundOrder()[state.round]-1],position:state.round+1});
@@ -147,14 +164,36 @@ ROUND.push(
   {n:16,art:14,theme:'Comodín de historial',title:'Las decisiones regresan',scenario:'Cada equipo recibe en su celular un dilema basado en sus decisiones anteriores.',options:[],personal:true},
   {n:17,art:2,theme:'Comodín de corrupción',title:'Una propuesta indebida',scenario:'La situación de cada empresa determina qué propuesta recibe en su celular.',options:[],personal:true},
   {n:18,art:15,theme:'Comodín de prensa',title:'Una buena noticia',scenario:'Un periodista publicó algo positivo sobre cada empresa. Esta ronda se resuelve sin votación.',options:[],press:true},
-  {n:19,art:13,theme:'Comodín de prensa',title:'En los titulares',scenario:'La nota de cada empresa tiene 50% de probabilidad de ser favorable y 50% de ser crítica. No hay votación.',options:[],press:true,mixedPress:true}
+  {n:19,art:13,theme:'Comodín de prensa',title:'En los titulares',scenario:'La nota de cada empresa tiene 50% de probabilidad de ser favorable y 50% de ser crítica. No hay votación.',options:[],press:true,mixedPress:true},
+  {n:20,art:8,theme:'Control interno',title:'El inventario fantasma',scenario:'El almacén reporta faltantes antes del cierre. El equipo comercial teme incumplir entregas.',options:[
+    scenarioOption('A','Parar despachos y conciliar','Prioriza verificar el inventario.',[{p:70,key:'existencias_confirmadas',story:'Se corrigieron las diferencias y se recuperó el control.',changes:{finanzas:-5,integridad:9}},{p:30,key:'atraso_despacho',story:'El recuento retrasó entregas y provocó reclamos.',changes:{finanzas:-9,reputacion:-6,integridad:5}}]),
+    scenarioOption('B','Contar por zonas mientras operas','Mantiene despachos con controles adicionales.',[{p:65,key:'conteo_gradual',story:'Se detectó un error de registro sin detener operaciones.',changes:{finanzas:8,integridad:5}},{p:35,key:'faltante_persiste',story:'El conteo parcial no detectó todos los faltantes.',changes:{finanzas:-10,riesgo_legal:4}}]),
+    scenarioOption('C','Continuar y revisar el próximo mes','Evita retrasos inmediatos.',[{p:100,key:'diferencia_pendiente',story:'Se mantuvieron los envíos y la diferencia quedó sin aclarar.',changes:{finanzas:5,integridad:-12,riesgo_legal:8}}])
+  ]},
+  {n:21,art:4,theme:'Crédito y proveedores',title:'El proveedor en crisis',scenario:'El proveedor principal pide un anticipo urgente. Cambiarlo implica demoras y puede afectar al personal.',options:[
+    scenarioOption('A','Dar un anticipo condicionado','Vincula los pagos a entregas comprobables.',[{p:70,key:'proveedor_estable',story:'El proveedor cumplió y se mantuvo el suministro.',changes:{finanzas:8,empleados:6}},{p:30,key:'perdida_anticipo',story:'El proveedor no pudo cumplir la primera entrega.',changes:{finanzas:-13,reputacion:-4}}]),
+    scenarioOption('B','Dividir el pedido','Reparte el riesgo entre dos proveedores.',[{p:100,key:'suministro_dividido',story:'Se aseguró el suministro con un costo mayor.',changes:{finanzas:-6,reputacion:7}}]),
+    scenarioOption('C','Cambiar de proveedor de inmediato','Reduce la dependencia a costa de la adaptación.',[{p:100,key:'cambio_abrupto',story:'El cambio redujo costos pero causó retrasos iniciales.',changes:{finanzas:10,empleados:-7,reputacion:-5}}])
+  ]},
+  {n:22,art:6,theme:'Ética comercial',title:'La promesa verde',scenario:'Mercadotecnia quiere anunciar que un producto es ecológico. Solo se han medido algunos procesos.',options:[
+    scenarioOption('A','Publicar únicamente los avances verificados','Limita el anuncio a lo que se puede demostrar.',[{p:100,key:'mensaje_verificado',story:'La campaña tuvo menor alcance y mejoró la credibilidad.',changes:{finanzas:-3,reputacion:10,integridad:9}}]),
+    scenarioOption('B','Esperar una verificación externa','Aplaza el lanzamiento hasta contar con evidencia.',[{p:70,key:'verificacion_verde',story:'La verificación respaldó el anuncio y detectó una mejora posible.',changes:{sostenibilidad:12,reputacion:7,finanzas:-5}},{p:30,key:'anuncio_aplazado',story:'La verificación detectó problemas y el lanzamiento se aplazó.',changes:{finanzas:-10,integridad:6}}]),
+    scenarioOption('C','Anunciar el producto como ecológico','Aprovecha el momento comercial.',[{p:60,key:'campana_rentable',story:'Subieron las ventas, aunque la empresa no pudo respaldar todas sus afirmaciones.',changes:{finanzas:14,integridad:-12}},{p:40,key:'campana_cuestionada',story:'Clientes cuestionaron la publicidad y la empresa retiró el anuncio.',changes:{finanzas:-9,reputacion:-15,integridad:-14,riesgo_legal:8}}])
+  ]},
+  {n:23,art:13,theme:'Comodín de prensa',title:'El reportaje del sector',scenario:'Un nuevo reportaje puede beneficiar o perjudicar a tu empresa.',options:[],press:true,mixedPress:true},
+  {n:24,art:12,theme:'Hecho aleatorio',title:'Cierre fiscal',scenario:'El cierre fiscal trae una noticia inesperada.',options:[],press:true,events:[
+    {p:50,key:'devolucion_isr',title:'Devolución de ISR',story:'Contabilidad consiguió una devolución de ISR y entró efectivo a la empresa.',changes:{finanzas:18}},
+    {p:50,key:'devolucion_demorada',title:'Devolución demorada',story:'La devolución quedó pendiente de revisión y la empresa incurrió en costos de financiamiento.',changes:{finanzas:-9}}]},
+  {n:25,art:1,theme:'Hecho aleatorio',title:'Incidente en el almacén',scenario:'El almacén reporta un incidente fuera del control del equipo.',options:[],press:true,events:[
+    {p:50,key:'robo_asegurado',title:'Pérdida contenida',story:'Hubo un robo y el seguro cubrió la mayor parte de la pérdida.',changes:{finanzas:-3}},
+    {p:50,key:'robo_perdida',title:'Robo de inventario',story:'Se perdió inventario en un robo y la cobertura resultó insuficiente.',changes:{finanzas:-16,reputacion:-5}}]}
 );
 
 function questionFor(player){
   const round=current();
   if(!round.personal||!player)return round;
   if(round.n===16){
-    const past=player.history.filter(entry=>entry.round<=15).reduce((best,entry)=>{
+    const past=player.history.filter(entry=>entry.choice&&entry.round!==16&&entry.round!==17).reduce((best,entry)=>{
       const magnitude=Object.values(entry.changes??{}).reduce((sum,value)=>sum+Math.abs(value),0);
       return !best||magnitude>=best.magnitude?{...entry,magnitude}:best;
     },null);
@@ -305,15 +344,15 @@ function enterScreen(screen,phase=screen){
     if(phase==='finished'&&(role==='host'?allJoined():client.snapshot?.leaderboard.length))celebrateFinal();
   }
 }
-function landing(){enterScreen('cover');role=null;status('Modo de juego');view().innerHTML=`<div class="panel cover-panel"><div class="cover-copy"><div class="tag">Experiencia interactiva</div><h1 class="hero">17 decisiones.<br>Un solo destino.</h1><p class="muted">El anfitrión proyecta los escenarios y el marcador. Los equipos votan desde sus celulares.</p><div class="space"></div><div class="flex"><button class="btn" onclick="startHost()">Soy anfitrión</button><button class="btn alt" onclick="showJoin()">Soy jugador</button></div></div></div>`}
+function landing(){enterScreen('cover');role=null;status('Modo de juego');view().innerHTML=`<div class="panel cover-panel"><div class="cover-copy"><div class="tag">Experiencia interactiva</div><h1 class="hero">20 decisiones.<br>Un solo destino.</h1><p class="muted">El anfitrión proyecta los escenarios y el marcador. Los equipos votan desde sus celulares.</p><div class="space"></div><div class="flex"><button class="btn" onclick="startHost()">Soy anfitrión</button><button class="btn alt" onclick="showJoin()">Soy jugador</button></div></div></div>`}
 function showJoin(){enterScreen('join');role='player';const q=qs.get('room')||'';view().innerHTML=`<div class="panel" style="max-width:510px;margin:5vh auto"><div class="tag">Unirse a la partida</div><h1 class="hero">Entra al consejo</h1><label>Código de la sala</label><input id="joincode" class="input" maxlength="6" value="${esc(q)}" placeholder="ABC123" autocapitalize="characters"><div class="space"></div><label>Nombre de tu equipo</label><input id="joinname" class="input" maxlength="28" placeholder="Equipo Águila"><div class="space"></div><button id="joinbtn" class="btn full" onclick="joinGame()">Entrar al juego</button><p id="joinerror" class="warning tiny"></p></div>`;status('Jugador')}
 function freshPlayer(name){return{id:client.id,name,stats:{...INITIAL},total:0,history:[],flags:[],last:null}}
 function startHost(saved=null){
   if(typeof Peer==='undefined'){status('No se cargó la conexión');view().innerHTML='<div class="panel"><p>Comprueba tu conexión a internet.</p><button class="btn" onclick="location.reload()">Reintentar</button></div>';return;}
   role='host';
   room=saved?.room||Array.from(crypto.getRandomValues(new Uint8Array(6)),n=>'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[n%36]).join('');
-  state=saved?.state||{phase:'lobby',round:0,players:{},submitted:{},results:{},logs:[],roundOrder:NEW_ROUND_ORDER};
-  if(state.phase==='lobby')state.roundOrder=NEW_ROUND_ORDER;
+  state=saved?.state||{phase:'lobby',round:0,players:{},submitted:{},results:{},logs:[],roundOrder:buildRoundOrder(20)};
+  if(state.phase==='lobby'&&!state.decisionCount){state.decisionCount=20;state.roundOrder=buildRoundOrder(20);}
   saveHost();
   renderHost();
   scheduleAdvance();
@@ -480,6 +519,37 @@ function handlePlayerMessage(msg){
   }
 }
 function allJoined(){return Object.keys(state.players).length}
+function setDecisionCount(value){
+  const count=Number(value);
+  if(role!=='host'||state.phase!=='lobby'||!Number.isInteger(count)||count<4||count>20)return;
+  state.decisionCount=count;
+  state.roundOrder=buildRoundOrder(count);
+  saveHost();
+  const summary=$('round-count-summary');
+  if(summary)summary.textContent=wildcardCount(count)+' comodines · '+state.roundOrder.length+' rondas en total';
+}
+function closingIndex(){
+  return roundOrder().indexOf(CLOSING_ROUNDS[0]);
+}
+function advanceToFinal(){
+  if(role!=='host'||!['question','results'].includes(state.phase))return;
+  const closing=closingIndex();
+  const keep=state.round+(state.phase==='results'?1:0);
+  if(closing<0||keep>=closing)return;
+  const message=state.phase==='question'?'¿Saltar a la auditoría? Las respuestas de la ronda en curso se descartarán.':'¿Saltar las rondas pendientes e ir a la auditoría?';
+  if(!confirm(message))return;
+  clearInterval(advanceTimer);
+  delete state.advanceAt;
+  const order=roundOrder();
+  state.roundOrder=[...order.slice(0,keep),...order.slice(closing).filter(id=>CLOSING_ROUNDS.includes(id))];
+  state.round=keep;
+  startRound();
+  window.scrollTo(0,0);
+}
+function finalJumpButton(){
+  const keep=state.round+(state.phase==='results'?1:0);
+  return keep<closingIndex()?'<button class="btn alt" onclick="advanceToFinal()">Avanzar al final</button>':'';
+}
 function startRound(){if(!allJoined()){alert('Necesitas al menos un equipo.');return}state.phase='question';state.submitted={};state.results={};if(current().press){reveal();return}saveHost();broadcast();renderHost()}
 let advanceTimer;
 function scheduleAdvance(){
@@ -519,7 +589,7 @@ function auditFollowUp(player,choice,outcome){
   }
   return {...outcome,story:outcome.story+' La revisión parcial dejó abierta la alerta de la ronda 2.'};
 }
-function reveal(autoAdvance=false){if(state.phase!=='question')return;const press=current().press,used=[];const pending=press?[]:Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted&&!press){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=press?{title:'Reconocimiento de prensa'}:questionFor(p).options.find(o=>o.id===voted),out=press?pressOutcome(p,used,current().mixedPress):auditFollowUp(p,voted,pickOutcome(opt));for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.total=computeScore(p);p.history.push({round:current().n,position:state.round+1,choice:voted,title:out.title??opt.title,event:out.key,roll:out.roll,story:out.story,changes:out.changes,impact:p.total-before,followUp:out.followUp});state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:out.title??opt.title,automatic:!!press,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';if(autoAdvance)state.advanceAt=Date.now()+20000;saveHost();broadcast();renderHost();scheduleAdvance();window.scrollTo(0,0)}
+function reveal(autoAdvance=false){if(state.phase!=='question')return;const press=current().press,used=[];const pending=press?[]:Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted&&!press){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=press?{title:'Reconocimiento de prensa'}:questionFor(p).options.find(o=>o.id===voted),out=press?(current().events?pickOutcome({outcomes:current().events}):pressOutcome(p,used,current().mixedPress)):auditFollowUp(p,voted,pickOutcome(opt));for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.total=computeScore(p);p.history.push({round:current().n,position:state.round+1,choice:voted,title:out.title??opt.title,event:out.key,roll:out.roll,story:out.story,changes:out.changes,impact:p.total-before,followUp:out.followUp});state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:out.title??opt.title,automatic:!!press,randomEvent:!!current().events,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';if(autoAdvance)state.advanceAt=Date.now()+20000;saveHost();broadcast();renderHost();scheduleAdvance();window.scrollTo(0,0)}
 function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,icon:p.icon??0,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
 function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${teamName(p)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
 function roundVisual(q,total=roundOrder().length){
@@ -552,7 +622,7 @@ function decisionComment(result){
   const impact=result.impact;
   if(!Number.isFinite(impact))return effects.length?'Los efectos del resultado fueron '+effects.join(' y ')+'.':'Consulta el resultado de la decisión para conocer la consecuencia de esta ronda.';
   const outcome=impact>0?`mejoró su puntuación en ${impact} puntos`:impact<0?`redujo su puntuación en ${Math.abs(impact)} puntos`:'dejó su puntuación sin cambio neto';
-  return `${result.automatic?'La nota periodística':'La decisión'} ${outcome}.${effects.length?' Sus efectos más relevantes fueron '+effects.join(' y ')+'.':''}`;
+  return `${result.randomEvent?'El hecho aleatorio':result.automatic?'La nota periodística':'La decisión'} ${outcome}.${effects.length?' Sus efectos más relevantes fueron '+effects.join(' y ')+'.':''}`;
 }
 function companyReport(player){
   const stats={...INITIAL}, decisions=[];
@@ -584,7 +654,7 @@ function renderRoundResults(){
   const results=Object.values(state.results);
   const standout=roundStandout(results);
   const impact=standout?.impact??0;
-  const label=current().press?'Comodín de prensa':impact<0?'Mayor retroceso':impact>0?'Mayor avance':standout?'Equipo destacado':'Consecuencias reveladas';
+  const label=current().press?current().theme:impact<0?'Mayor retroceso':impact>0?'Mayor avance':standout?'Equipo destacado':'Consecuencias reveladas';
   const story=standout?.story??(results.some(result=>!result.missing)?'Consulta las consecuencias de esta ronda.':'Ningún equipo registró una decisión en esta ronda.');
   const formula=Object.entries(SCORE_WEIGHTS).map(([key,weight],index)=>`${index?(weight<0?'− ':'+ '):''}${Math.abs(weight)}% de ${LABEL[key].toLowerCase()}`).join(' ');
   view().innerHTML=`<div class="round-close">
@@ -600,15 +670,15 @@ function renderRoundResults(){
       <div class="score-axis muted" aria-hidden="true"><span>Equipo</span><div class="score-axis-track"><span>−25</span><span>0</span><span>100</span></div><span></span></div>
       <div class="score-lines" tabindex="0" aria-label="Puntuación por equipo">${roundRanking()}</div>
     </section>
-    <div class="round-controls"><div>${state.advanceAt?`<span id="advance-countdown" class="tiny muted"></span> <button class="btn alt" id="pause-advance" onclick="pauseAdvance()">Pausar avance</button> `:''}<button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div><button class="btn" onclick="nextRound()">${state.round===roundOrder().length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
+    <div class="round-controls"><div>${state.advanceAt?`<span id="advance-countdown" class="tiny muted"></span> <button class="btn alt" id="pause-advance" onclick="pauseAdvance()">Pausar avance</button> `:''}<button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div>${finalJumpButton()}<button class="btn" onclick="nextRound()">${state.round===roundOrder().length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
     <dialog class="round-dialog" id="score-rule"><h2>Cómo se calculan los puntos</h2><p>Se redondea la suma ponderada al entero más cercano. Los indicadores van de 0 a 100.</p><p>${esc(formula)}.</p><form method="dialog"><button class="btn alt">Cerrar</button></form></dialog>
     <dialog class="round-dialog" id="round-details"><h2>Consecuencias por equipo</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>
       ${results.map(result=>`<div class="result-card"><strong>${teamName(result)} · ${result.missing?'No votó':esc(result.automatic?result.title:result.choice+'. '+result.title)}</strong><p>${esc(result.missing?'Sin consecuencias en esta ronda.':result.story)}</p><p class="notice">${esc(decisionComment(result))}</p>${result.missing?'':`<div class="tiny muted">${result.automatic?'':`Tirada: ${result.roll}/100 · Probabilidad: ${result.prob}% · `}${Object.entries(result.effects??result.changes).map(([key,value])=>esc(LABEL[key]||key)+': '+(value>=0?'+':'')+value).join(' · ')}</div>`}</div>`).join('')}
     </dialog>
   </div>`;
 }
-function renderHost(){if(role!=='host')return;enterScreen('host:'+state.phase+':'+state.round,state.phase);$('host-controls').hidden=false;document.body.classList.toggle('round-results',state.phase==='results');const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
-if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map((o,index)=>roundOption(o,false,index)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
+function renderHost(){if(role!=='host')return;enterScreen('host:'+state.phase+':'+state.round,state.phase);$('host-controls').hidden=false;document.body.classList.toggle('round-results',state.phase==='results');const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><label for="decision-count">¿Cuántas decisiones quieren jugar?</label><select class="input" id="decision-count" onchange="setDecisionCount(this.value)">${Array.from({length:17},(_,index)=>index+4).map(count=>`<option value="${count}" ${state.decisionCount===count?'selected':''}>${count} decisiones</option>`).join('')}</select><p id="round-count-summary" class="tiny muted">${wildcardCount(state.decisionCount)} comodines · ${roundOrder().length} rondas en total</p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
+if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map((o,index)=>roundOption(o,false,index)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button>${finalJumpButton()}</div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
 if(state.phase==='results'){renderRoundResults();return}
 if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1>${winnerBanner(leaderboard())}<p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="space"></div><button class="btn alt" onclick="$('final-reports').showModal()">Informes por empresa</button> <button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div><dialog class="round-dialog" id="final-reports"><h2>Informes por empresa</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>${leaderboard().map(team=>`<details class="result-card"><summary>${teamName(team)} · ${team.total} pts</summary>${renderCompanyReport(companyReport(state.players[team.id]))}</details>`).join('')}</dialog>`}}
 function renderPlayerLobby(snapshot){
@@ -641,7 +711,7 @@ function saveLobbyProfile(event){
   $('profile-feedback').textContent='Guardando…';
   send(hostConn,{type:'profile',name:profile.get('team'),icon:Number(profile.get('icon'))});
 }
-function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;enterScreen('player:'+(snap?.phase??'waiting')+':'+(snap?.round??''),snap?.phase??'waiting');if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q,snap.roundCount)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map((o,index)=>roundOption(o,true,index)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.automatic?'Nota':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${winnerBanner(snap.leaderboard)}<h2>Clasificación final</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>${snap.report?`<section class="panel"><h2>Informe final de tu empresa</h2>${renderCompanyReport(snap.report)}</section>`:''}`}}
+function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;enterScreen('player:'+(snap?.phase??'waiting')+':'+(snap?.round??''),snap?.phase??'waiting');if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q,snap.roundCount)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map((o,index)=>roundOption(o,true,index)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.randomEvent?'Hecho':mine.automatic?'Nota':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${winnerBanner(snap.leaderboard)}<h2>Clasificación final</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>${snap.report?`<section class="panel"><h2>Informe final de tu empresa</h2>${renderCompanyReport(snap.report)}</section>`:''}`}}
 function vote(option){
   if(client.chosen||client.pending||!hostConn?.open)return;
   const round=client.snapshot.round;
