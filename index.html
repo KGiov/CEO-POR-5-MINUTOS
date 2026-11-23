@@ -104,6 +104,26 @@ body.round-results .top{padding:0 0 6px}
 .confetti-piece{position:absolute;top:0;left:var(--left);width:var(--size);height:calc(var(--size)*1.55);background:var(--color);border-radius:var(--corner);animation:confetti-fall var(--duration) var(--delay) linear both}
 @keyframes confetti-fall{from{transform:translate3d(0,-6vh,0) rotate(0deg)}to{transform:translate3d(var(--drift),106vh,0) rotate(var(--spin))}}
 @media(prefers-reduced-motion:reduce){.confetti-rain{display:none}#view[data-enter="finished"] .winner-banner{animation:none}}
+
+.round-map{display:flex;align-items:center;gap:clamp(2px,.5vw,6px);width:100%;margin:0 0 10px}
+.round-map i{display:block;flex:1;min-width:0;height:5px;border-radius:5px;background:#27344e}
+.round-map .done{background:#4eaaab}
+.round-map .bonus{box-shadow:inset 0 0 0 1px #bda1ff;background:#4d3e72}
+.round-map .bonus.done{background:#9876ea}
+.round-map .now{background:#f9d280;box-shadow:0 0 9px #f9d28a85;animation:live-pulse 2s ease-in-out infinite}
+@keyframes live-pulse{50%{box-shadow:0 0 15px #f9d280bb}}
+.round-visual{border-color:#547597}
+.round-visual::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 25%,#b4ebf52b 48%,transparent 65%);transform:translateX(-100%);animation:art-sweep 1s .12s ease-out both}
+#view[data-enter="steady"] .round-visual::after{animation:none}
+@keyframes art-sweep{to{transform:translateX(100%)}}
+.round-options .round-option{background:linear-gradient(110deg,var(--option-tint),#131e34 75%);border-left:3px solid var(--option-accent);width:100%}
+.round-option[data-choice="A"]{--option-accent:#60e6ce;--option-tint:#163a45}
+.round-option[data-choice="B"]{--option-accent:#88b7ff;--option-tint:#20375b}
+.round-option[data-choice="C"]{--option-accent:#f5c778;--option-tint:#3c3440}
+.round-option[data-choice="D"]{--option-accent:#c8a7ff;--option-tint:#342a53}
+.round-option .letter{color:var(--option-accent,#a8fff2);box-shadow:inset 0 0 0 1px var(--option-accent,#a8fff2)}
+.round-options .chosen{border-color:#76f7d6;box-shadow:0 0 15px #76f7d655}
+@media(prefers-reduced-motion:reduce){.round-map .now,.round-visual::after{animation:none}}
 </style><link rel="stylesheet" href="cover.css"><link rel="stylesheet" href="round-art.css"></head><body><main class="wrap"><header class="top"><div class="logo"><span>CEO</span> POR 5 MINUTOS</div><div class="header-actions"><span id="status" class="pill">Sin conectar</span><details class="host-controls" id="host-controls" hidden><summary class="pill" aria-label="Opciones del anfitrión" title="Opciones del anfitrión">⋯</summary><button class="btn danger" onclick="restartGame()">Reiniciar juego</button></details></div></header><div id="view"></div></main>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -434,7 +454,7 @@ function sendState(conn){
   send(conn,{type:'state',phase:state.phase,round:state.round,
     question:question?{...question,options:question.options.map(({id,title,desc})=>({id,title,desc}))}:null,
     profile:state.players[conn.playerId] ? {name:state.players[conn.playerId].name,icon:state.players[conn.playerId].icon??0} : null,
-    roundCount:roundOrder().length,count:allJoined(),voted:Object.keys(state.submitted).length,
+    roundCount:roundOrder().length,bonusRounds:bonusRoundPositions(),count:allJoined(),voted:Object.keys(state.submitted).length,
     choice:state.submitted[conn.playerId]||null,
     leaderboard:leaderboard(),report:state.phase==='finished'&&state.players[conn.playerId]?companyReport(state.players[conn.playerId]):null,results:state.phase==='results'?state.results:null});
 }
@@ -592,11 +612,21 @@ function auditFollowUp(player,choice,outcome){
 function reveal(autoAdvance=false){if(state.phase!=='question')return;const press=current().press,used=[];const pending=press?[]:Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted&&!press){state.results[id]={name:p.name,icon:p.icon??0,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=press?{title:'Reconocimiento de prensa'}:questionFor(p).options.find(o=>o.id===voted),out=press?(current().events?pickOutcome({outcomes:current().events}):pressOutcome(p,used,current().mixedPress)):auditFollowUp(p,voted,pickOutcome(opt));for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.total=computeScore(p);p.history.push({round:current().n,position:state.round+1,choice:voted,title:out.title??opt.title,event:out.key,roll:out.roll,story:out.story,changes:out.changes,impact:p.total-before,followUp:out.followUp});state.results[id]={name:p.name,icon:p.icon??0,choice:voted,title:out.title??opt.title,automatic:!!press,randomEvent:!!current().events,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';if(autoAdvance)state.advanceAt=Date.now()+20000;saveHost();broadcast();renderHost();scheduleAdvance();window.scrollTo(0,0)}
 function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,icon:p.icon??0,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
 function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${teamName(p)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
-function roundVisual(q,total=roundOrder().length){
-  return `<div class="round-visual round-art-${q.art??q.n}"><span>Ronda ${q.position??q.n} de ${total} · ${esc(q.theme)}</span></div>`;
+function bonusRoundPositions(){
+  return roundOrder().flatMap((id,index)=>ROUND[id-1].press?[index+1]:[]);
+}
+function roundMap(position,total,bonuses){
+  return `<div class="round-map" role="img" aria-label="Avance de partida: ronda ${position} de ${total}">${Array.from({length:total},(_,index)=>{
+    const number=index+1;
+    const classes=[number<position?'done':'',bonuses.includes(number)?'bonus':'',number===position?'now':''].join(' ');
+    return `<i class="${classes}" title="Ronda ${number}${bonuses.includes(number)?' · Comodín':''}" aria-hidden="true"></i>`;
+  }).join('')}</div>`;
+}
+function roundVisual(q,total=roundOrder().length,bonuses=bonusRoundPositions()){
+  return `${roundMap(q.position??q.n,total,bonuses)}<div class="round-visual round-art-${q.art??q.n}"><span>Ronda ${q.position??q.n} de ${total} · ${esc(q.theme)}</span></div>`;
 }
 function roundOption(o,interactive=false,index=0){
-  const delay=`style="--option-index:${index}"`;
+  const delay=`data-choice="${esc(o.id)}" style="--option-index:${index}"`;
   const contents=`<span class="letter">${esc(o.id)}</span><div class="answer"><strong>${esc(o.title)}</strong><div class="muted tiny">${esc(o.desc)}</div></div>`;
   if(!interactive)return `<div class="result-card round-option" ${delay}>${contents}</div>`;
   return `<button class="option round-option ${client.chosen===o.id?'chosen':''}" onclick="vote('${esc(o.id)}')" ${delay} ${client.chosen||client.pending?'disabled':''}>${contents}</button>`;
@@ -660,7 +690,7 @@ function renderRoundResults(){
   view().innerHTML=`<div class="round-close">
     <section class="round-reveal round-art-${current().art??current().n} ${impact<0?'setback':''}" aria-labelledby="reveal-name">
       <div class="reveal-backdrop" aria-hidden="true"></div>
-      <div class="reveal-label">Ronda ${state.round+1} de ${roundOrder().length} · ${label}</div>
+      ${roundMap(state.round+1,roundOrder().length,bonusRoundPositions())}<div class="reveal-label">Ronda ${state.round+1} de ${roundOrder().length} · ${label}</div>
       <h1 class="reveal-name" id="reveal-name">${standout?teamName(standout):'Cierre de ronda'}</h1>
       <p class="reveal-story">${esc(story)}</p>
       ${standout?`<p class="impact-comment"><strong>${esc(standout.title)}.</strong> ${esc(decisionComment(standout))}</p>`:''}
@@ -711,7 +741,7 @@ function saveLobbyProfile(event){
   $('profile-feedback').textContent='Guardando…';
   send(hostConn,{type:'profile',name:profile.get('team'),icon:Number(profile.get('icon'))});
 }
-function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;enterScreen('player:'+(snap?.phase??'waiting')+':'+(snap?.round??''),snap?.phase??'waiting');if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q,snap.roundCount)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map((o,index)=>roundOption(o,true,index)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.randomEvent?'Hecho':mine.automatic?'Nota':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${winnerBanner(snap.leaderboard)}<h2>Clasificación final</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>${snap.report?`<section class="panel"><h2>Informe final de tu empresa</h2>${renderCompanyReport(snap.report)}</section>`:''}`}}
+function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;enterScreen('player:'+(snap?.phase??'waiting')+':'+(snap?.round??''),snap?.phase??'waiting');if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q,snap.roundCount,snap.bonusRounds??[])}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map((o,index)=>roundOption(o,true,index)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.randomEvent?'Hecho':mine.automatic?'Nota':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${winnerBanner(snap.leaderboard)}<h2>Clasificación final</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>${snap.report?`<section class="panel"><h2>Informe final de tu empresa</h2>${renderCompanyReport(snap.report)}</section>`:''}`}}
 function vote(option){
   if(client.chosen||client.pending||!hostConn?.open)return;
   const round=client.snapshot.round;
