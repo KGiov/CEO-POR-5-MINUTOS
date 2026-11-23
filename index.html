@@ -109,7 +109,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&
 const clamp=n=>Math.max(0,Math.min(100,n));
 const status=s=>$('status').textContent=s;
 const btn=(title,fn)=>`<button class="btn" onclick="${fn}">${title}</button>`;
-const NEW_ROUND_ORDER=[1,2,3,4,5,6,7,8,9,18,10,11,12,13,19,14,15,16,17];
+const NEW_ROUND_ORDER=[1,2,3,4,5,19,6,7,8,18,9,10,11,12,13,14,15,16,17];
 const LEGACY_ROUND_ORDER=Array.from({length:18},(_,index)=>index+1);
 const roundOrder=()=>state.roundOrder??LEGACY_ROUND_ORDER;
 const current=()=>({...ROUND[roundOrder()[state.round]-1],position:state.round+1});
@@ -274,7 +274,7 @@ function startHost(saved=null){
   role='host';
   room=saved?.room||Array.from(crypto.getRandomValues(new Uint8Array(6)),n=>'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[n%36]).join('');
   state=saved?.state||{phase:'lobby',round:0,players:{},submitted:{},results:{},logs:[],roundOrder:NEW_ROUND_ORDER};
-  if(state.phase==='lobby'&&!state.roundOrder)state.roundOrder=NEW_ROUND_ORDER;
+  if(state.phase==='lobby')state.roundOrder=NEW_ROUND_ORDER;
   saveHost();
   renderHost();
   connectHost();
