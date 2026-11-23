@@ -33,6 +33,37 @@
 @keyframes reveal-drift{from{transform:scale(1.08)}to{transform:scale(1)}}
 @keyframes reveal-glow{from{opacity:.25}45%{opacity:1}to{opacity:.7}}
 @media(prefers-reduced-motion:reduce){.round-reveal,.round-reveal::after,.reveal-backdrop,.reveal-name,.reveal-story,.reveal-delta,.round-board.rank-visible .leader{animation:none}}
+
+body.round-results .wrap{height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr);padding:10px}
+body.round-results .top{padding:0 0 6px}
+.round-close{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:7px}
+.round-close .round-reveal{min-height:0;padding:clamp(8px,2vh,22px);border-radius:14px}
+.round-close .reveal-name{font-size:clamp(19px,4.5vh,49px);margin:.15em 0}
+.round-close .reveal-label{font-size:clamp(10px,1.7vh,15px)}
+.round-close .reveal-story,.impact-comment{font-size:clamp(11px,1.9vh,18px);line-height:1.22;margin:.28em 0;max-width:none;overflow-wrap:anywhere}
+.impact-comment strong{color:var(--reveal-accent)}
+.round-close .round-board{display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0;padding:clamp(6px,1.5vh,16px);margin:0}
+.round-board h2{margin:0;font-size:clamp(14px,2.5vh,24px)}
+.score-axis,.score-row{display:grid;grid-template-columns:minmax(65px,24%) minmax(0,1fr) 3.6em;gap:8px;align-items:center}
+.score-axis{font-size:11px;margin:3px 0}
+.score-lines{overflow:auto;min-height:0;scrollbar-gutter:stable}
+.score-row{min-height:26px;padding:3px 0;font-size:clamp(11px,1.9vh,17px)}
+.score-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score-axis-track,.score-track{position:relative;height:1.25em}
+.score-axis-track span{position:absolute}
+.score-axis-track span:nth-child(2){left:20%;transform:translateX(-50%)}
+.score-axis-track span:last-child{right:0}
+.score-track{height:clamp(8px,1.7vh,17px);background:#20304c;border-radius:4px}
+.score-track::before{content:'';position:absolute;left:20%;height:100%;width:1px;background:#cbd8ef}
+.score-fill{position:absolute;left:var(--left);width:var(--width);height:100%;border-radius:3px;background:linear-gradient(90deg,#329b92,#76f7d6);transform-origin:left;animation:score-grow .72s both;animation-delay:var(--rank-delay)}
+.score-fill.negative{background:#ff9e89;transform-origin:right}
+.score-value{text-align:right;font-variant-numeric:tabular-nums}
+.round-controls{display:flex;justify-content:space-between;align-items:center;gap:5px;flex-wrap:wrap}
+.round-controls .btn{padding:clamp(5px,1.2vh,11px);font-size:clamp(10px,1.8vh,15px)}
+.round-dialog{width:min(620px,90vw);max-height:84dvh;overflow:auto;color:#eaf1ff;background:#111c33;border:1px solid #40567c;border-radius:14px;padding:17px}
+.round-dialog::backdrop{background:#030913c4}
+@keyframes score-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media(prefers-reduced-motion:reduce){.score-fill{animation:none}}
 </style><link rel="stylesheet" href="round-art.css"></head><body><main class="wrap"><header class="top"><div class="logo">EL <span>CEO</span> <small style="font-size:12px;font-weight:500;letter-spacing:0;color:#a8b6d0">15 DECISIONES</small></div><span id="status" class="pill">Sin conectar</span></header><div id="view"></div></main>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -211,8 +242,11 @@ function allJoined(){return Object.keys(state.players).length}
 function startRound(){if(!allJoined()){alert('Necesitas al menos un equipo.');return}state.phase='question';state.submitted={};state.results={};saveHost();broadcast();renderHost()}
 function nextRound(){if(state.round===ROUND.length-1){state.phase='finished';saveHost();broadcast();renderHost();window.scrollTo(0,0);return}state.round++;startRound();window.scrollTo(0,0)}
 function pickOutcome(option){const roll=1+Math.floor(Math.random()*100);let a=0;for(const out of option.outcomes){a+=out.p;if(roll<=a)return{...out,roll}}return{...option.outcomes[option.outcomes.length-1],roll}}
-function computeScore(p){const s=p.stats;return Math.round((s.finanzas*.20+s.reputacion*.15+s.integridad*.30+s.empleados*.12+s.sostenibilidad*.12+s.datos*.11)-s.riesgo_legal*.25)}
-function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,missing:true};continue}const before=computeScore(p),previousTotal=p.total,opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
+const SCORE_WEIGHTS={finanzas:20,reputacion:15,integridad:30,empleados:12,sostenibilidad:12,datos:11,riesgo_legal:-25};
+function computeScore(p){
+  return Math.round(Object.entries(SCORE_WEIGHTS).reduce((sum,[key,weight])=>sum+p.stats[key]*weight,0)/100);
+}
+function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,missing:true};continue}const before=computeScore(p),priorStats={...p.stats},previousTotal=p.total,opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total,impact:p.total-before,previousTotal,effects:Object.fromEntries(Object.keys(out.changes).map(key=>[key,p.stats[key]-priorStats[key]]))};}state.phase='results';saveHost();broadcast();renderHost();window.scrollTo(0,0)}
 function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
 function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${esc(p.name)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
 function roundVisual(q){
@@ -228,57 +262,49 @@ function roundStandout(results){
     .sort((a,b)=>Math.abs(b.impact)-Math.abs(a.impact)||a.impact-b.impact||a.name.localeCompare(b.name))[0];
 }
 function roundRanking(){
-  const board=leaderboard();
-  const previous=[...board].sort((a,b)=>{
-    const before=p=>state.results[p.id]?.previousTotal??p.total;
-    return before(b)-before(a)||a.name.localeCompare(b.name);
-  });
-  const positions=new Map(previous.map((team,index)=>[team.id,index]));
-  return board.map((team,index)=>{
-    const movement=positions.get(team.id)-index;
-    const movementLabel=movement>0?'Subió '+movement:movement<0?'Bajó '+Math.abs(movement):'Sin cambio';
-    return `<div class="leader" style="--rank-delay:${Math.min(index,8)*55}ms"><div class="rank">${index+1}</div><div><strong>${esc(team.name)}</strong></div><span class="rank-move ${movement>0?'good':movement<0?'warning':'muted'}">${movementLabel}</span><div class="pts">${team.total} pts</div></div>`;
+  return leaderboard().map((team,index)=>{
+    const left=(Math.min(team.total,0)+25)/125*100;
+    const width=Math.abs(team.total)/125*100;
+    return `<div class="score-row"><strong class="score-name" title="${esc(team.name)}">${index+1}. ${esc(team.name)}</strong><div class="score-track" aria-hidden="true"><i class="score-fill ${team.total<0?'negative':''}" style="--left:${left}%;--width:${width}%;--rank-delay:${Math.min(index,8)*55}ms"></i></div><strong class="score-value">${team.total} pts</strong></div>`;
   }).join('');
+}
+function decisionComment(result){
+  const effects=Object.entries(result.effects??result.changes??{})
+    .filter(([key,value])=>key in SCORE_WEIGHTS&&value)
+    .sort(([a,x],[b,y])=>Math.abs(y*SCORE_WEIGHTS[b])-Math.abs(x*SCORE_WEIGHTS[a]))
+    .slice(0,2).map(([key,value])=>`${LABEL[key]} ${value>0?'+':''}${value}`);
+  const impact=result.impact;
+  const outcome=impact>0?`mejoró su puntuación en ${impact} puntos`:impact<0?`redujo su puntuación en ${Math.abs(impact)} puntos`:'dejó su puntuación sin cambio neto';
+  return `La decisión ${outcome}.${effects.length?' Sus efectos más relevantes fueron '+effects.join(' y ')+'.':''}`;
 }
 function renderRoundResults(){
   const results=Object.values(state.results);
   const standout=roundStandout(results);
   const impact=standout?.impact??0;
   const label=impact<0?'Mayor retroceso':impact>0?'Mayor avance':standout?'Equipo destacado':'Consecuencias reveladas';
-  const name=standout?.name??'Cierre de ronda';
-  const story=standout?.story??(results.some(result=>!result.missing)?'Consulta las decisiones y la clasificación de esta ronda.':'Ningún equipo registró una decisión en esta ronda.');
-  view().innerHTML=`<section class="round-reveal round-art-${state.round+1} ${impact<0?'setback':''}" aria-labelledby="reveal-name">
-    <div class="reveal-backdrop" aria-hidden="true"></div>
-    <div class="reveal-label">Ronda ${state.round+1} de ${ROUND.length} · ${label}</div>
-    <h1 class="reveal-name" id="reveal-name">${esc(name)}</h1>
-    <p class="reveal-story">${esc(story)}</p>
-    ${standout?`<div class="reveal-delta">${impact>0?'+':''}${impact} pts de impacto en la ronda</div>`:''}
-    <button class="btn alt reveal-jump" onclick="showRoundRanking()">Ver clasificación ↓</button>
-  </section>
-  <section id="round-ranking" class="panel round-board" tabindex="-1">
-    <div class="flex" style="justify-content:space-between"><h2>Clasificación general</h2><button class="btn" onclick="nextRound()">${state.round===ROUND.length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
-    ${roundRanking()}
-    <hr class="divider">
-    <details><summary>Ver qué le pasó a cada equipo</summary>
+  const story=standout?.story??(results.some(result=>!result.missing)?'Consulta las consecuencias de esta ronda.':'Ningún equipo registró una decisión en esta ronda.');
+  const formula=Object.entries(SCORE_WEIGHTS).map(([key,weight],index)=>`${index?(weight<0?'− ':'+ '):''}${Math.abs(weight)}% de ${LABEL[key].toLowerCase()}`).join(' ');
+  view().innerHTML=`<div class="round-close">
+    <section class="round-reveal round-art-${state.round+1} ${impact<0?'setback':''}" aria-labelledby="reveal-name">
+      <div class="reveal-backdrop" aria-hidden="true"></div>
+      <div class="reveal-label">Ronda ${state.round+1} de ${ROUND.length} · ${label}</div>
+      <h1 class="reveal-name" id="reveal-name">${esc(standout?.name??'Cierre de ronda')}</h1>
+      <p class="reveal-story">${esc(story)}</p>
+      ${standout?`<p class="impact-comment"><strong>${esc(standout.title)}.</strong> ${esc(decisionComment(standout))}</p>`:''}
+    </section>
+    <section class="panel round-board" aria-labelledby="ranking-title">
+      <h2 id="ranking-title">Clasificación general</h2>
+      <div class="score-axis muted" aria-hidden="true"><span>Equipo</span><div class="score-axis-track"><span>−25</span><span>0</span><span>100</span></div><span></span></div>
+      <div class="score-lines" tabindex="0" aria-label="Puntuación por equipo">${roundRanking()}</div>
+    </section>
+    <div class="round-controls"><div><button class="btn alt" onclick="$('score-rule').showModal()">Fórmula</button> <button class="btn alt" onclick="$('round-details').showModal()">Consecuencias por equipo</button></div><button class="btn" onclick="nextRound()">${state.round===ROUND.length-1?'Ver resultado final':'Siguiente ronda →'}</button></div>
+    <dialog class="round-dialog" id="score-rule"><h2>Cómo se calculan los puntos</h2><p>Se redondea la suma ponderada al entero más cercano. Los indicadores van de 0 a 100.</p><p>${esc(formula)}.</p><form method="dialog"><button class="btn alt">Cerrar</button></form></dialog>
+    <dialog class="round-dialog" id="round-details"><h2>Consecuencias por equipo</h2><form method="dialog"><button class="btn alt">Cerrar</button></form>
       ${results.map(result=>`<div class="result-card"><strong>${esc(result.name)} · ${result.missing?'No votó':esc(result.choice+'. '+result.title)}</strong><p>${esc(result.missing?'Sin consecuencias en esta ronda.':result.story)}</p>${result.missing?'':`<div class="tiny muted">Tirada: ${result.roll}/100 · Probabilidad: ${result.prob}% · ${Object.entries(result.changes).map(([key,value])=>esc(LABEL[key]||key)+': '+(value>=0?'+':'')+value).join(' · ')}</div>`}</div>`).join('')}
-    </details>
-  </section>`;
-  const ranking=$('round-ranking');
-  if(typeof IntersectionObserver==='function'){
-    const observer=new IntersectionObserver(([entry])=>{
-      if(!entry.isIntersecting)return;
-      ranking.classList.add('rank-visible');
-      observer.disconnect();
-    },{rootMargin:'0px 0px -80px 0px'});
-    observer.observe(ranking);
-  }
+    </dialog>
+  </div>`;
 }
-function showRoundRanking(){
-  const ranking=$('round-ranking');
-  ranking.focus({preventScroll:true});
-  ranking.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
-}
-function renderHost(){if(role!=='host')return;const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
+function renderHost(){if(role!=='host')return;document.body.classList.toggle('round-results',state.phase==='results');const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
 if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map(o=>roundOption(o)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
 if(state.phase==='results'){renderRoundResults();return}
 if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="notice">La puntuación es didáctica: un buen resultado financiero no borra actos de corrupción, violaciones de derechos o daños ambientales.</div><div class="space"></div><button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div>`}}
