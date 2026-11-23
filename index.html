@@ -85,6 +85,16 @@ body.round-results .top{padding:0 0 6px}
 .cover-copy{max-width:465px}
 .cover-copy .muted{color:#d0dcef}
 @media(max-width:600px){.cover-panel{min-height:min(620px,80svh);align-items:end}.cover-panel::before{background-image:linear-gradient(0deg,#081122 3%,#081122d9 36%,#08112229 87%),var(--cover-photo);background-position:65% center}}
+
+#view[data-enter="question"] .hero,#view[data-enter="question"] .question,#view[data-enter="question"] .hero + p{animation:question-in .32s .035s cubic-bezier(.2,.75,.25,1) both}
+#view[data-enter="question"] .round-options .round-option{animation:choice-in .32s cubic-bezier(.2,.75,.25,1) both;animation-delay:calc(.09s + var(--option-index,0)*.055s)}
+#view[data-enter="steady"] .round-visual::before,#view[data-enter="steady"] .score-fill,#view[data-enter="steady"] .round-reveal,#view[data-enter="steady"] .round-reveal::after,#view[data-enter="steady"] .reveal-backdrop{animation:none}
+.btn,.option{transition:transform .15s ease,box-shadow .15s ease,background-color .15s ease,border-color .15s ease}
+@media(hover:hover) and (pointer:fine){.btn:not(:disabled):hover,.option:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 6px 18px #060d1a54}}
+.btn:not(:disabled):active,.option:not(:disabled):active{transform:scale(.98)}
+@keyframes question-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes choice-in{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){#view[data-enter] .hero,#view[data-enter] .question,#view[data-enter] .hero + p,#view[data-enter] .round-option{animation:none}.btn,.option{transition:none}.btn:not(:disabled):hover,.option:not(:disabled):hover,.btn:not(:disabled):active,.option:not(:disabled):active{transform:none}}
 </style><link rel="stylesheet" href="cover.css"><link rel="stylesheet" href="round-art.css"></head><body><main class="wrap"><header class="top"><div class="logo"><span>CEO</span> POR 5 MINUTOS</div><div class="header-actions"><span id="status" class="pill">Sin conectar</span><details class="host-controls" id="host-controls" hidden><summary class="pill" aria-label="Opciones del anfitrión" title="Opciones del anfitrión">⋯</summary><button class="btn danger" onclick="restartGame()">Reiniciar juego</button></details></div></header><div id="view"></div></main>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -218,8 +228,24 @@ function newGame(){
   localStorage.removeItem(HOST_SAVE);
   location.reload();
 }
-function landing(){role=null;status('Modo de juego');view().innerHTML=`<div class="panel cover-panel"><div class="cover-copy"><div class="tag">Experiencia interactiva</div><h1 class="hero">15 decisiones.<br>Un solo destino.</h1><p class="muted">El anfitrión proyecta los escenarios y el marcador. Los equipos votan desde sus celulares.</p><div class="space"></div><div class="flex"><button class="btn" onclick="startHost()">Soy anfitrión</button><button class="btn alt" onclick="showJoin()">Soy jugador</button></div><div class="space"></div><p class="tiny muted">Requiere conexión a internet durante la partida. La partida se recupera en este mismo navegador.</p></div></div>`}
-function showJoin(){role='player';const q=qs.get('room')||'';view().innerHTML=`<div class="panel" style="max-width:510px;margin:5vh auto"><div class="tag">Unirse a la partida</div><h1 class="hero">Entra al consejo</h1><label>Código de la sala</label><input id="joincode" class="input" maxlength="6" value="${esc(q)}" placeholder="ABC123" autocapitalize="characters"><div class="space"></div><label>Nombre de tu equipo</label><input id="joinname" class="input" maxlength="28" placeholder="Equipo Águila"><div class="space"></div><button id="joinbtn" class="btn full" onclick="joinGame()">Entrar al juego</button><p id="joinerror" class="warning tiny"></p></div>`;status('Jugador')}
+let activeScreen,screenAnimation;
+function enterScreen(screen,phase=screen){
+  const stage=view();
+  if(activeScreen===screen){
+    stage.dataset.enter='steady';
+    return;
+  }
+  activeScreen=screen;
+  stage.dataset.enter=phase;
+  screenAnimation?.cancel();
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    screenAnimation=stage.animate?.([
+      {opacity:.42,transform:'translateY(8px)'},{opacity:1,transform:'none'}
+    ],{duration:phase==='question'?230:300,easing:'cubic-bezier(.2,.75,.25,1)'});
+  }
+}
+function landing(){enterScreen('cover');role=null;status('Modo de juego');view().innerHTML=`<div class="panel cover-panel"><div class="cover-copy"><div class="tag">Experiencia interactiva</div><h1 class="hero">15 decisiones.<br>Un solo destino.</h1><p class="muted">El anfitrión proyecta los escenarios y el marcador. Los equipos votan desde sus celulares.</p><div class="space"></div><div class="flex"><button class="btn" onclick="startHost()">Soy anfitrión</button><button class="btn alt" onclick="showJoin()">Soy jugador</button></div><div class="space"></div><p class="tiny muted">Requiere conexión a internet durante la partida. La partida se recupera en este mismo navegador.</p></div></div>`}
+function showJoin(){enterScreen('join');role='player';const q=qs.get('room')||'';view().innerHTML=`<div class="panel" style="max-width:510px;margin:5vh auto"><div class="tag">Unirse a la partida</div><h1 class="hero">Entra al consejo</h1><label>Código de la sala</label><input id="joincode" class="input" maxlength="6" value="${esc(q)}" placeholder="ABC123" autocapitalize="characters"><div class="space"></div><label>Nombre de tu equipo</label><input id="joinname" class="input" maxlength="28" placeholder="Equipo Águila"><div class="space"></div><button id="joinbtn" class="btn full" onclick="joinGame()">Entrar al juego</button><p id="joinerror" class="warning tiny"></p></div>`;status('Jugador')}
 function freshPlayer(name){return{id:client.id,name,stats:{...INITIAL},total:0,history:[],flags:[],last:null}}
 function startHost(saved=null){
   if(typeof Peer==='undefined'){status('No se cargó la conexión');view().innerHTML='<div class="panel"><p>Comprueba tu conexión a internet.</p><button class="btn" onclick="location.reload()">Reintentar</button></div>';return;}
@@ -268,6 +294,7 @@ function connectPlayer(attempt=0){
   status(attempt?'Reconectando a '+room+'…':'Conectando…');
   client.snapshot=null;
   client.pending=null;
+  enterScreen('connecting');
   view().innerHTML='<div class="panel"><h2>Conectando a la sala '+room+'</h2><p class="muted">La conexión se reintentará automáticamente.</p><button class="btn alt" onclick="location.href=location.pathname">Volver al inicio</button></div>';
   const instance=new Peer(undefined,{debug:0});
   peer=instance;
@@ -402,10 +429,11 @@ function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div
 function roundVisual(q){
   return `<div class="round-visual round-art-${q.art??q.n}"><span>Ronda ${q.n} de ${ROUND.length} · ${esc(q.theme)}</span></div>`;
 }
-function roundOption(o,interactive=false){
+function roundOption(o,interactive=false,index=0){
+  const delay=`style="--option-index:${index}"`;
   const contents=`<span class="letter">${esc(o.id)}</span><div class="answer"><strong>${esc(o.title)}</strong><div class="muted tiny">${esc(o.desc)}</div></div>`;
-  if(!interactive)return `<div class="result-card round-option">${contents}</div>`;
-  return `<button class="option round-option ${client.chosen===o.id?'chosen':''}" onclick="vote('${esc(o.id)}')" ${client.chosen||client.pending?'disabled':''}>${contents}</button>`;
+  if(!interactive)return `<div class="result-card round-option" ${delay}>${contents}</div>`;
+  return `<button class="option round-option ${client.chosen===o.id?'chosen':''}" onclick="vote('${esc(o.id)}')" ${delay} ${client.chosen||client.pending?'disabled':''}>${contents}</button>`;
 }
 function roundStandout(results){
   return results.filter(result=>!result.missing&&Number.isFinite(result.impact))
@@ -457,8 +485,8 @@ function renderRoundResults(){
     </dialog>
   </div>`;
 }
-function renderHost(){if(role!=='host')return;$('host-controls').hidden=false;document.body.classList.toggle('round-results',state.phase==='results');const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
-if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map(o=>roundOption(o)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
+function renderHost(){if(role!=='host')return;enterScreen('host:'+state.phase+':'+state.round,state.phase);$('host-controls').hidden=false;document.body.classList.toggle('round-results',state.phase==='results');const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
+if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div><div class="round-options">${q.options.map((o,index)=>roundOption(o,false,index)).join('')}</div><div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
 if(state.phase==='results'){renderRoundResults();return}
 if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="notice">La puntuación es didáctica: un buen resultado financiero no borra actos de corrupción, violaciones de derechos o daños ambientales.</div><div class="space"></div><button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div>`}}
 function renderPlayerLobby(snapshot){
@@ -491,7 +519,7 @@ function saveLobbyProfile(event){
   $('profile-feedback').textContent='Guardando…';
   send(hostConn,{type:'profile',name:profile.get('team'),icon:Number(profile.get('icon'))});
 }
-function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map(o=>roundOption(o,true)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.automatic?'Premio':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>`}}
+function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;enterScreen('player:'+(snap?.phase??'waiting')+':'+(snap?.round??''),snap?.phase??'waiting');if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${teamName(client)} · Sala ${room}</div>`;if(snap.phase==='lobby'){renderPlayerLobby(snap);return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}${roundVisual(q)}<h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider"><div class="round-options">${q.options.map((o,index)=>roundOption(o,true,index)).join('')}</div><div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice"><strong>Comentario para tu equipo</strong>${mine&&!mine.missing?`<p>${mine.automatic?'Premio':'Decisión'}: ${esc(mine.title)}</p>`:''}<p>${esc(decisionComment(mine))}</p></div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${teamName(p)}</span><b>${p.total} pts</b></div>`).join('')}</div>`}}
 function vote(option){
   if(client.chosen||client.pending||!hostConn?.open)return;
   const round=client.snapshot.round;
