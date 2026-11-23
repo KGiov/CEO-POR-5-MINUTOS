@@ -18,29 +18,204 @@ const status=s=>$('status').textContent=s;
 const btn=(title,fn)=>`<button class="btn" onclick="${fn}">${title}</button>`;
 const current=()=>ROUND[state.round];
 const qs=new URLSearchParams(location.search);
-function landing(){role=null;status('Modo de juego');view().innerHTML=`<div class="panel center" style="max-width:730px;margin:9vh auto"><div class="tag">Experiencia interactiva</div><h1 class="hero">15 decisiones.<br>Un solo destino.</h1><p class="muted">El anfitrión proyecta los escenarios y el marcador. Los equipos votan desde sus celulares.</p><div class="space"></div><div class="flex" style="justify-content:center"><button class="btn" onclick="startHost()">Soy anfitrión</button><button class="btn alt" onclick="showJoin()">Soy jugador</button></div><div class="space"></div><p class="tiny muted">Requiere conexión a internet durante la partida. No se guardan datos en servidores propios.</p></div>`}
+const HOST_SAVE='ceo-host-session-v1';
+const playerSave=()=> 'ceo-team-v1:'+room;
+function saveHost(){localStorage.setItem(HOST_SAVE,JSON.stringify({room,state}));}
+function restoreHost(){
+  try {
+    const saved=JSON.parse(localStorage.getItem(HOST_SAVE));
+    if(saved && /^[A-Z0-9]{6}$/.test(saved.room) && saved.state?.players) return saved;
+  } catch(e) {}
+  return null;
+}
+function newGame(){
+  localStorage.removeItem(HOST_SAVE);
+  location.reload();
+}
+function landing(){role=null;status('Modo de juego');view().innerHTML=`<div class="panel center" style="max-width:730px;margin:9vh auto"><div class="tag">Experiencia interactiva</div><h1 class="hero">15 decisiones.<br>Un solo destino.</h1><p class="muted">El anfitrión proyecta los escenarios y el marcador. Los equipos votan desde sus celulares.</p><div class="space"></div><div class="flex" style="justify-content:center"><button class="btn" onclick="startHost()">Soy anfitrión</button><button class="btn alt" onclick="showJoin()">Soy jugador</button></div><div class="space"></div><p class="tiny muted">Requiere conexión a internet durante la partida. La partida se recupera en este mismo navegador.</p></div>`}
 function showJoin(){role='player';const q=qs.get('room')||'';view().innerHTML=`<div class="panel" style="max-width:510px;margin:5vh auto"><div class="tag">Unirse a la partida</div><h1 class="hero">Entra al consejo</h1><label>Código de la sala</label><input id="joincode" class="input" maxlength="6" value="${esc(q)}" placeholder="ABC123" autocapitalize="characters"><div class="space"></div><label>Nombre de tu equipo</label><input id="joinname" class="input" maxlength="28" placeholder="Equipo Águila"><div class="space"></div><button id="joinbtn" class="btn full" onclick="joinGame()">Entrar al juego</button><p id="joinerror" class="warning tiny"></p></div>`;status('Jugador')}
 function freshPlayer(name){return{id:client.id,name,stats:{...INITIAL},total:0,history:[],flags:[],last:null}}
-function startHost(){if(typeof Peer==='undefined'){alert('No se cargó la conexión. Comprueba internet.');return}role='host';room=Math.random().toString(36).slice(2,8).toUpperCase();pin='ceo15-'+room.toLowerCase();state={phase:'lobby',round:0,players:{},submitted:{},results:{},logs:[]};peer=new Peer(pin,{debug:0});status('Conectando...');peer.on('open',()=>{status('Sala '+room);renderHost()});peer.on('connection',conn=>{connections.set(conn.peer,conn);conn.on('data',msg=>handleHostMessage(conn,msg));conn.on('close',()=>{connections.delete(conn.peer);renderHost()});conn.on('error',()=>{});});peer.on('error',e=>{status('Error de conexión');alert('No se pudo conectar: '+e.type+'. Intenta crear otra sala.')});}
-function joinGame(){const code=$('joincode').value.trim().toUpperCase(),name=$('joinname').value.trim();if(!/^[A-Z0-9]{6}$/.test(code)||name.length<2){$('joinerror').textContent='Escribe un código de 6 caracteres y un nombre de equipo.';return}if(typeof Peer==='undefined'){$('joinerror').textContent='No se cargó el servicio de conexión.';return}room=code;client.name=name;client.chosen=null;client.chosenRound=-1;$('joinbtn').disabled=true;status('Conectando...');peer=new Peer(undefined,{debug:0});peer.on('open',()=>{hostConn=peer.connect('ceo15-'+code.toLowerCase(),{reliable:true});hostConn.on('open',()=>{hostConn.send({type:'join',id:client.id,name});status('Conectado')});hostConn.on('data',handlePlayerMessage);hostConn.on('close',()=>{status('Desconectado');view().innerHTML='<div class="panel"><h2>Se perdió la conexión con el anfitrión.</h2><p>Vuelve a entrar con el mismo código para recuperar tu equipo.</p><button class="btn" onclick="location.reload()">Reconectar</button></div>'});hostConn.on('error',()=>{status('Sin sala');alert('No se pudo conectar. Comprueba el código y vuelve a intentar.');location.reload()})});peer.on('error',()=>{status('Sin conexión');alert('No encontramos esa sala. Comprueba que el anfitrión siga conectado.');location.reload()})}
+function startHost(saved=null){
+  if(typeof Peer==='undefined'){status('No se cargó la conexión');view().innerHTML='<div class="panel"><p>Comprueba tu conexión a internet.</p><button class="btn" onclick="location.reload()">Reintentar</button></div>';return;}
+  role='host';
+  room=saved?.room||Array.from(crypto.getRandomValues(new Uint8Array(6)),n=>'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[n%36]).join('');
+  state=saved?.state||{phase:'lobby',round:0,players:{},submitted:{},results:{},logs:[]};
+  saveHost();
+  renderHost();
+  connectHost();
+}
+function connectHost(attempt=0){
+  status('Abriendo sala '+room+'…');
+  const instance=new Peer('ceo15-'+room.toLowerCase(),{debug:0});
+  peer=instance;
+  instance.on('open',()=>{if(peer===instance)status('Sala '+room);});
+  instance.on('connection',conn=>{
+    if(peer!==instance){conn.close();return;}
+    connections.set(conn.peer,conn);
+    conn.on('data',msg=>{if(peer===instance)handleHostMessage(conn,msg);});
+    conn.on('close',()=>{if(connections.get(conn.peer)===conn)connections.delete(conn.peer);});
+    conn.on('error',()=>{});
+  });
+  instance.on('disconnected',()=>{if(peer===instance&&!instance.destroyed)instance.reconnect();});
+  instance.on('error',error=>{
+    if(peer!==instance)return;
+    if(instance.open&&error.type==='peer-unavailable')return;
+    peer=null;
+    instance.destroy();
+    connections.clear();
+    status('Recuperando sala '+room+'…');
+    if(attempt<12){setTimeout(()=>connectHost(attempt+1),2500);return;}
+    status('Sala guardada · Sin conexión');
+    view().insertAdjacentHTML('afterbegin','<div class="notice">No se pudo recuperar la conexión. <button class="btn alt" onclick="location.reload()">Reintentar</button></div>');
+  });
+}
+function joinGame(){
+  const code=$('joincode').value.trim().toUpperCase(),name=$('joinname').value.trim();
+  if(!/^[A-Z0-9]{6}$/.test(code)||name.length<2){$('joinerror').textContent='Escribe un código de 6 caracteres y un nombre de equipo.';return;}
+  if(typeof Peer==='undefined'){$('joinerror').textContent='No se cargó el servicio de conexión.';return;}
+  room=code;
+  client.name=name;
+  $('joinbtn').disabled=true;
+  connectPlayer();
+}
+function connectPlayer(attempt=0){
+  status(attempt?'Reconectando a '+room+'…':'Conectando…');
+  client.snapshot=null;
+  client.pending=null;
+  view().innerHTML='<div class="panel"><h2>Conectando a la sala '+room+'</h2><p class="muted">La conexión se reintentará automáticamente.</p><button class="btn alt" onclick="location.href=location.pathname">Volver al inicio</button></div>';
+  const instance=new Peer(undefined,{debug:0});
+  peer=instance;
+  const timer=setTimeout(retry,8000);
+  function retry(){
+    if(peer!==instance)return;
+    clearTimeout(timer);
+    peer=null;
+    hostConn=null;
+    instance.destroy();
+    if(attempt<15){setTimeout(()=>connectPlayer(attempt+1),2000);return;}
+    showJoin();
+    $('joincode').value=room;
+    $('joinname').value=client.name;
+    $('joinerror').textContent='La sala no responde. Confirma el código con el anfitrión y vuelve a intentar.';
+  }
+  instance.on('open',()=>{
+    if(peer!==instance)return;
+    const conn=instance.connect('ceo15-'+room.toLowerCase(),{reliable:true});
+    hostConn=conn;
+    conn.on('open',()=>send(conn,{type:'join',id:client.id,name:client.name}));
+    conn.on('data',msg=>{
+      if(peer!==instance)return;
+      if(msg.type==='welcome'||msg.type==='error')clearTimeout(timer);
+      handlePlayerMessage(msg);
+    });
+    conn.on('close',retry);
+    conn.on('error',retry);
+  });
+  instance.on('error',retry);
+}
 function send(conn,msg){try{if(conn?.open)conn.send(msg)}catch(e){}}
-function broadcast(){const snap={type:'state',phase:state.phase,round:state.round,question:state.phase==='question'?current():null,count:Object.keys(state.players).length,voted:Object.keys(state.submitted).length,leaderboard:leaderboard(),results:state.phase==='results'?state.results:null};for(let conn of connections.values())send(conn,snap)}
-function handleHostMessage(conn,msg){if(!msg||typeof msg!=='object')return;if(msg.type==='join'){if(state.phase==='finished'){send(conn,{type:'error',message:'La partida ya terminó.'});return}const name=String(msg.name||'').trim().slice(0,28),id=String(msg.id||'');if(name.length<2||id.length>90||id.length<10)return;if(!state.players[id]&&Object.values(state.players).some(p=>p.name.toLowerCase()===name.toLowerCase())){send(conn,{type:'error',message:'Ese nombre ya está ocupado.'});return}if(!state.players[id]){if(state.phase!=='lobby'){send(conn,{type:'error',message:'La partida ya comenzó y no admite equipos nuevos.'});return}state.players[id]=freshPlayer(name);state.players[id].id=id}conn.playerId=id;send(conn,{type:'welcome',id,room,player:state.players[id]});broadcast();renderHost();}if(msg.type==='vote'){if(state.phase!=='question'||msg.round!==state.round||!conn.playerId||!state.players[conn.playerId])return;const o=current().options.find(x=>x.id===msg.option);if(!o||state.submitted[conn.playerId])return;state.submitted[conn.playerId]=o.id;send(conn,{type:'accepted',round:state.round,option:o.id});broadcast();renderHost()}}
-function handlePlayerMessage(msg){if(msg.type==='welcome'){client.data=msg.player;client.stage='waiting';renderPlayer()}else if(msg.type==='error'){alert(msg.message);location.reload()}else if(msg.type==='accepted'){client.chosen=msg.option;client.chosenRound=msg.round;renderPlayer()}else if(msg.type==='state'){client.stage=msg.phase;if(msg.phase==='question'&&client.chosenRound!==msg.round)client.chosen=null;client.snapshot=msg;renderPlayer()}}
+function sendState(conn){
+  const question=state.phase==='question'?current():null;
+  send(conn,{type:'state',phase:state.phase,round:state.round,
+    question:question?{...question,options:question.options.map(({id,title,desc})=>({id,title,desc}))}:null,
+    count:allJoined(),voted:Object.keys(state.submitted).length,
+    choice:state.submitted[conn.playerId]||null,
+    leaderboard:leaderboard(),results:state.phase==='results'?state.results:null});
+}
+function broadcast(){for(const conn of connections.values())if(conn.playerId)sendState(conn);}
+function handleHostMessage(conn,msg){
+  if(!msg||typeof msg!=='object')return;
+  if(msg.type==='join'){
+    const name=String(msg.name||'').trim().slice(0,28),id=String(msg.id||'');
+    if(name.length<2||! /^[a-f0-9-]{36}$/i.test(id))return;
+    if(!state.players[id]){
+      if(state.phase!=='lobby'){send(conn,{type:'error',message:'La partida ya comenzó y no admite equipos nuevos.'});return;}
+      if(Object.values(state.players).some(p=>p.name.toLowerCase()===name.toLowerCase())){
+        send(conn,{type:'error',message:'Ese nombre ya está ocupado.'});return;
+      }
+      state.players[id]={...freshPlayer(name),id};
+      saveHost();
+    }
+    conn.playerId=id;
+    send(conn,{type:'welcome',player:state.players[id]});
+    broadcast();
+    renderHost();
+  }
+  if(msg.type==='vote'&&conn.playerId){
+    if(state.phase==='question'&&msg.round===state.round&&current().options.some(o=>o.id===msg.option)&&!state.submitted[conn.playerId]){
+      state.submitted[conn.playerId]=msg.option;
+      saveHost();
+      broadcast();
+      renderHost();
+      return;
+    }
+    sendState(conn);
+  }
+}
+function handlePlayerMessage(msg){
+  if(msg.type==='welcome'){
+    client.name=msg.player.name;
+    localStorage.setItem(playerSave(),client.name);
+    history.replaceState(null,'',location.pathname+'?room='+room);
+    status('Sala '+room);
+    renderPlayer();
+  }else if(msg.type==='error'){
+    const instance=peer;
+    peer=null;
+    hostConn=null;
+    instance?.destroy();
+    localStorage.removeItem(playerSave());
+    showJoin();
+    $('joincode').value=room;
+    $('joinname').value=client.name;
+    $('joinerror').textContent=msg.message;
+  }else if(msg.type==='state'){
+    if(client.snapshot?.round!==msg.round||msg.choice||msg.phase!=='question')client.pending=null;
+    client.chosen=msg.choice;
+    client.snapshot=msg;
+    renderPlayer();
+  }
+}
 function allJoined(){return Object.keys(state.players).length}
-function startRound(){if(!allJoined()){alert('Necesitas al menos un equipo.');return}state.phase='question';state.submitted={};state.results={};broadcast();renderHost()}
-function nextRound(){if(state.round===ROUND.length-1){state.phase='finished';broadcast();renderHost();return}state.round++;startRound()}
+function startRound(){if(!allJoined()){alert('Necesitas al menos un equipo.');return}state.phase='question';state.submitted={};state.results={};saveHost();broadcast();renderHost()}
+function nextRound(){if(state.round===ROUND.length-1){state.phase='finished';saveHost();broadcast();renderHost();return}state.round++;startRound()}
 function pickOutcome(option){const roll=1+Math.floor(Math.random()*100);let a=0;for(const out of option.outcomes){a+=out.p;if(roll<=a)return{...out,roll}}return{...option.outcomes[option.outcomes.length-1],roll}}
 function computeScore(p){const s=p.stats;return Math.round((s.finanzas*.20+s.reputacion*.15+s.integridad*.30+s.empleados*.12+s.sostenibilidad*.12+s.datos*.11)-s.riesgo_legal*.25)}
-function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,missing:true};continue}const opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total};}state.phase='results';broadcast();renderHost()}
+function reveal(){if(state.phase!=='question')return;const pending=Object.keys(state.players).filter(id=>!state.submitted[id]);if(pending.length&&!confirm('Faltan '+pending.length+' equipos por votar. ¿Revelar resultados sin su voto?'))return;state.results={};for(const [id,p] of Object.entries(state.players)){const voted=state.submitted[id];if(!voted){state.results[id]={name:p.name,missing:true};continue}const opt=current().options.find(o=>o.id===voted),out=pickOutcome(opt);for(const [k,v] of Object.entries(out.changes))p.stats[k]=clamp((p.stats[k]||0)+v);p.flags.push(out.key);p.history.push({round:state.round+1,choice:voted,event:out.key,roll:out.roll,story:out.story,changes:out.changes});p.total=computeScore(p);state.results[id]={name:p.name,choice:voted,title:opt.title,story:out.story,changes:out.changes,roll:out.roll,prob:out.p,total:p.total};}state.phase='results';saveHost();broadcast();renderHost()}
 function leaderboard(){return Object.values(state.players).map(p=>({id:p.id,name:p.name,total:p.total,stats:p.stats,history:p.history.length})).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name))}
 function renderBoard(){return leaderboard().map((p,i)=>`<div class="leader"><div class="rank">${i+1}</div><div><strong>${esc(p.name)}</strong><div class="ranktext">Integridad: ${p.stats.integridad} · Finanzas: ${p.stats.finanzas} · Riesgo legal: ${p.stats.riesgo_legal}</div></div><div class="pts">${p.total}</div></div>`).join('')||'<p class="muted">Aún no se ha unido ningún equipo.</p>'}
-function renderHost(){if(role!=='host')return;const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Mantén esta pestaña abierta: funciona como servidor temporal de la partida.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
+function renderHost(){if(role!=='host')return;const joinUrl=location.href.split('?')[0].split('#')[0]+'?room='+room;const roomHeader=`<div class="tag">Anfitrión · Sala ${room}</div>`;if(state.phase==='lobby'){view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<h1 class="hero">La sala está lista</h1><p>Comparte el código o proyecta el QR. Cada equipo entra desde un celular.</p><div class="bigcode">${room}</div><p class="muted">${esc(joinUrl)}</p><div class="flex"><div id="qrcode" class="qr"></div><div><p class="muted">Equipos conectados: <strong>${allJoined()}</strong></p><button class="btn" onclick="startRound()">Comenzar ronda 1</button></div></div><div class="space"></div><div class="notice">Puedes recargar esta pestaña y seguir con el mismo código. Usa este navegador para recuperar la sala.</div></div><div class="panel"><h2>Equipos inscritos</h2>${renderBoard()}</div></div>`;if(typeof QRCode!=='undefined')new QRCode($('qrcode'),{text:joinUrl,width:170,height:170});else $('qrcode').innerText=room;return}
 if(state.phase==='question'){const q=current(),votes=Object.keys(state.submitted).length;view().innerHTML=`<div class="split"><div class="panel">${roomHeader}<div class="tag">Ronda ${q.n}/15 · ${esc(q.theme)}</div><h1 class="hero">${esc(q.title)}</h1><p class="question">${esc(q.scenario)}</p><div class="space"></div>${q.options.map(o=>`<div class="result-card"><strong>${o.id}. ${esc(o.title)}</strong><div class="muted tiny">${esc(o.desc)}</div></div>`).join('')}<div class="space"></div><div class="flex"><span class="pill">Han votado ${votes}/${allJoined()}</span><button class="btn" onclick="reveal()">Revelar consecuencias</button></div></div><div class="panel"><h2>Clasificación</h2>${renderBoard()}<hr class="divider"><div class="tag">Votación</div><p class="muted">Las decisiones individuales permanecen ocultas hasta revelar.</p><div class="bar"><i style="width:${allJoined()?votes/allJoined()*100:0}%"></i></div></div></div>`;return}
 if(state.phase==='results'){view().innerHTML=`<div class="panel"><div class="tag">Ronda ${state.round+1}/15 · Consecuencias reveladas</div><h1 class="hero">Las decisiones tienen un precio</h1><div class="split"><div><h2>Lo que ocurrió</h2>${Object.values(state.results).map(o=>`<div class="result-card"><strong>${esc(o.name)} — ${o.missing?'No votó':esc(o.choice+'. '+o.title)}</strong><p>${esc(o.missing?'Sin consecuencias en esta ronda.':o.story)}</p>${o.missing?'':`<div class="tiny muted">Tirada: ${o.roll}/100 · Resultado sorteado: ${o.prob}% · ${Object.entries(o.changes).map(([k,v])=>esc(LABEL[k]||k)+': '+(v>=0?'+':'')+v).join(' · ')}</div>`}</div>`).join('')}</div><div><h2>Marcador actualizado</h2>${renderBoard()}<div class="space"></div><button class="btn full" onclick="nextRound()">${state.round===14?'Ver resultado final':'Siguiente ronda →'}</button></div></div></div>`;return}
-if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="notice">La puntuación es didáctica: un buen resultado financiero no borra actos de corrupción, violaciones de derechos o daños ambientales.</div><div class="space"></div><button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="location.reload()">Nueva partida</button></div>`}}
-function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${esc(client.name)} · Sala ${room}</div>`;if(snap.phase==='lobby'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Estás dentro</h1><p>Espera a que el anfitrión comience la primera ronda.</p><span class="pill">${snap.count} equipos listos</span></div>`;return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${q.n}/15</div><h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider">${q.options.map(o=>`<button class="option ${client.chosen===o.id?'chosen':''}" onclick="vote('${o.id}')" ${client.chosen?'disabled':''}><strong>${o.id}. ${esc(o.title)}</strong><div>${esc(o.desc)}</div></button>`).join('')}<div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice">${mine?.missing?'No hubo cambios en tus indicadores.':'Se aplicaron las consecuencias a tu equipo.'}</div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}</div>`}}
-function vote(option){if(client.chosen||!hostConn?.open)return;client.chosen=option;client.chosenRound=client.snapshot.round;hostConn.send({type:'vote',round:client.snapshot.round,option});renderPlayer()}
+if(state.phase==='finished'){view().innerHTML=`<div class="panel center"><div class="tag">Final de la simulación</div><h1 class="hero">El legado del consejo</h1><p>La clasificación combina finanzas, integridad, reputación y responsabilidad social. El riesgo legal descuenta puntos.</p><div style="max-width:720px;margin:25px auto;text-align:left">${renderBoard()}</div><div class="notice">La puntuación es didáctica: un buen resultado financiero no borra actos de corrupción, violaciones de derechos o daños ambientales.</div><div class="space"></div><button class="btn alt" onclick="downloadCSV()">Descargar resultados CSV</button> <button class="btn" onclick="newGame()">Nueva partida</button></div>`}}
+function renderPlayer(){if(role!=='player')return;const snap=client.snapshot;if(!snap){view().innerHTML=`<div class="panel center"><h2>Conectado al juego</h2><p>El anfitrión está preparando la sala.</p></div>`;return}const title=`<div class="tag">${esc(client.name)} · Sala ${room}</div>`;if(snap.phase==='lobby'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Estás dentro</h1><p>Espera a que el anfitrión comience la primera ronda.</p><span class="pill">${snap.count} equipos listos</span></div>`;return}if(snap.phase==='question'){const q=snap.question;view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${q.n}/15</div><h1 class="hero">${esc(q.title)}</h1><p>${esc(q.scenario)}</p><hr class="divider">${q.options.map(o=>`<button class="option ${client.chosen===o.id?'chosen':''}" onclick="vote('${o.id}')" ${client.chosen||client.pending?'disabled':''}><strong>${o.id}. ${esc(o.title)}</strong><div>${esc(o.desc)}</div></button>`).join('')}<div class="space"></div><p class="muted center">${client.chosen?'✓ Tu respuesta está registrada. Espera al anfitrión.':client.pending?'Enviando tu voto…':'Selecciona una decisión. No podrás cambiarla después.'}</p></div>`;return}if(snap.phase==='results'){const mine=snap.results?.[client.id];view().innerHTML=`<div class="panel">${title}<div class="tag">Ronda ${snap.round+1} · Resultado</div><h1 class="hero">${mine?.missing?'No votaste':esc(mine?.story||'Resultado registrado')}</h1><div class="notice">${mine?.missing?'No hubo cambios en tus indicadores.':'Se aplicaron las consecuencias a tu equipo.'}</div><h2>Clasificación</h2>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}<p class="muted">Espera a la siguiente ronda.</p></div>`;return}if(snap.phase==='finished'){view().innerHTML=`<div class="panel center">${title}<h1 class="hero">Partida terminada</h1>${snap.leaderboard.map((p,i)=>`<div class="score"><span>${i+1}. ${esc(p.name)}</span><b>${p.total} pts</b></div>`).join('')}</div>`}}
+function vote(option){
+  if(client.chosen||client.pending||!hostConn?.open)return;
+  const round=client.snapshot.round;
+  client.pending=option;
+  send(hostConn,{type:'vote',round,option});
+  renderPlayer();
+  setTimeout(()=>{
+    if(client.snapshot?.round===round&&client.pending===option){
+      client.pending=null;
+      renderPlayer();
+      status('Voto sin confirmar · Reintenta');
+    }
+  },5000);
+}
 function downloadCSV(){const rows=[['Posición','Equipo','Puntos',...Object.keys(INITIAL),'Historial']];leaderboard().forEach((p,i)=>{const full=state.players[p.id];rows.push([i+1,p.name,p.total,...Object.keys(INITIAL).map(k=>p.stats[k]),full.history.map(h=>h.round+':'+h.choice+'('+h.event+')').join('; ')])});const csv='\ufeff'+rows.map(a=>a.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\r\n'),blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='resultados_el_ceo.csv';a.click();URL.revokeObjectURL(url)}
-if(qs.has('room'))showJoin();else landing();
+const requestedRoom=(qs.get('room')||'').toUpperCase();
+if(qs.has('room')){
+  showJoin();
+  if(/^[A-Z0-9]{6}$/.test(requestedRoom)&&typeof Peer!=='undefined'){
+    room=requestedRoom;
+    client.name=localStorage.getItem(playerSave())||'';
+    if(client.name)connectPlayer();
+  }
+}else{
+  const saved=restoreHost();
+  if(saved)startHost(saved);else landing();
+}
+window.addEventListener('pagehide',()=>{const instance=peer;peer=null;instance?.destroy();});
+window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();});
 </script></body></html>
