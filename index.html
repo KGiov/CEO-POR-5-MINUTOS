@@ -76,6 +76,9 @@ body.round-results .top{padding:0 0 6px}
 .avatar-option input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
 .avatar-option:has(input:checked){background:#163b46;border-color:#5bd5c4}
 .avatar-option:has(input:focus-visible){outline:2px solid white;outline-offset:2px}
+.team-icon{display:inline-block;width:1.12em;height:1.12em;vertical-align:-.16em;fill:none;stroke:var(--icon-color);stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.avatar-option .team-icon{width:24px;height:24px;pointer-events:none}
+.avatar-option:has(input:checked){box-shadow:inset 0 0 12px #5bd5c424}
 </style><link rel="stylesheet" href="round-art.css"></head><body><main class="wrap"><header class="top"><div class="logo">EL <span>CEO</span> <small style="font-size:12px;font-weight:500;letter-spacing:0;color:#a8b6d0">15 DECISIONES</small></div><div class="header-actions"><span id="status" class="pill">Sin conectar</span><details class="host-controls" id="host-controls" hidden><summary class="pill" aria-label="Opciones del anfitrión" title="Opciones del anfitrión">⋯</summary><button class="btn danger" onclick="restartGame()">Reiniciar juego</button></details></div></header><div id="view"></div></main>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
@@ -92,17 +95,15 @@ const status=s=>$('status').textContent=s;
 const btn=(title,fn)=>`<button class="btn" onclick="${fn}">${title}</button>`;
 const current=()=>ROUND[state.round];
 const qs=new URLSearchParams(location.search);
-const TEAM_ICONS=[
-  ['🦊','Zorro'],['🦁','León'],['🐯','Tigre'],['🐺','Lobo'],['🦅','Águila'],['🦉','Búho'],
-  ['🐼','Panda'],['🐻','Oso'],['🐙','Pulpo'],['🦈','Tiburón'],['🐬','Delfín'],['🐲','Dragón'],
-  ['🦋','Mariposa'],['🐝','Abeja'],['🦄','Unicornio'],['🦖','Dinosaurio'],['🤖','Robot'],['👾','Alien'],
-  ['🚀','Cohete'],['🛸','Ovni'],['⚡','Rayo'],['🔥','Fuego'],['🌙','Luna'],['☀️','Sol'],
-  ['🌈','Arcoíris'],['🌊','Ola'],['💎','Diamante'],['👑','Corona'],['🏆','Trofeo'],['🎯','Diana']
-];
+const TEAM_ICONS=[["Escudo","M12 2l8 4v6c0 5-8 10-8 10s-8-5-8-10V6z M8 12l3 3 5-6"],["Montaña","M2 20l7-13 4 7 3-5 6 11z M7 11l2 2 2-2"],["Faro","M4 21h16 M8 21l2-12h4l2 12 M9 9V6l3-3 3 3v3 M2 7h4m12 0h4"],["Brújula","M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M16 8l-2 6-6 2 2-6z"],["Ancla","M12 8v14 M8 12h8 M3 15c0 4 4 7 9 7s9-3 9-7 M12 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],["Ola","M2 17c4-1 4-7 10-9 4-2 8 0 10 3-5-2-7 1-6 4 1 2 4 2 6 1 M2 21c3-2 5-2 8 0s5 2 8 0l4-1"],["Hoja","M3 21l12-12 M7 17C1 8 11 3 21 3c0 10-5 20-14 14z"],["Árbol","M12 2l5 7h-3l5 6h-4l5 5H4l5-5H5l5-6H7z M12 20v3"],["Flama","M12 2c2 6 8 8 8 13a8 8 0 0 1-16 0c0-3 2-6 4-8l1 5c3-3 4-6 3-10z M12 22c-4-3-3-6 0-9 3 3 4 6 0 9z"],["Rayo","M13 2L4 14h7l-1 8 10-13h-7z"],["Sol","M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z M12 2v2m0 16v2M2 12h2m16 0h2M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"],["Luna","M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11z"],["Saturno","M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M5 10c-3 2-4 4-3 5 2 2 19-2 20-6 1-2-3-2-5-2"],["Cometa","M3 21l6-6 M2 15l4-4 M9 22l4-4 M11 13a6 6 0 1 1 8-8 6 6 0 0 1-8 8z"],["Cohete","M9 15l-3-3c3-6 8-9 15-9 0 7-3 12-9 15z M7 13l-4 1-1 4 6-1m3 0-1 5 4-2 1-5 M15 8h2v2h-2z"],["Cristal","M6 4h12l4 6-10 11L2 10z M2 10h20 M6 4l3 6 3 11 3-11 3-6"],["Corona","M3 6l5 5 4-7 4 7 5-5-2 13H5z M5 16h14"],["Trofeo","M7 3h10v7a5 5 0 0 1-10 0z M7 5H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4m-5 3v5m-4 1h8"],["Diana","M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z M12 12h.01"],["Torre","M5 21h14l-2-7V9l2-2V3h-4v3h-2V3h-2v3H9V3H5v4l2 2v5z M7 10h10 M7 14h10"],["Puente","M2 19h20 M5 19V6m14 13V6 M2 12c3 3 5 3 10-3 5 6 7 6 10 3 M9 13v6m6-6v6"],["Engrane","M9 3h6l1 3 3 1 2 4-2 3v3l-3 3-4-1-4 1-3-3v-3l-2-3 2-4 3-1z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],["Circuito","M7 7h10v10H7z M10 10h4v4h-4z M9 2v5m6-5v5m-6 10v5m6-5v5M2 9h5m-5 6h5m10-6h5m-5 6h5"],["Diamante estelar","M12 2l2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"],["Flecha","M3 18l6-6 4 4 8-10 M15 6h6v6"],["Pirámide","M12 3l10 16H2z M12 3l3 16 M6 13h12"],["Colmena","M12 2l9 5v10l-9 5-9-5V7z M3 7l9 5 9-5 M12 12v10"],["Ala","M2 16c5-9 13-12 20-12-2 4-5 6-9 7l5-1c-2 4-6 5-9 5l4 1c-3 3-8 4-11 0z"],["Lince","M3 4l6 4h6l6-4-1 12-8 5-8-5z M7 12l3 1m4 0 3-1m-6 4h2"],["Serpiente","M4 20h10a4 4 0 0 0 0-8H8a3 3 0 0 1 0-6h4l2-3 6 3-6 4-2-4 M17 6h.01"]];
+const ICON_COLORS=['#74eed6','#87b8ff','#f8c574','#b9a5ff','#ffaaa4','#8de2aa'];
 const validIcon=index=>Number.isInteger(index)&&index>=0&&index<TEAM_ICONS.length;
+function teamIcon(index){
+  const icon=validIcon(index)?index:0;
+  return `<svg class="team-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="--icon-color:${ICON_COLORS[icon%ICON_COLORS.length]}"><path d="${TEAM_ICONS[icon][1]}"/></svg>`;
+}
 function teamName(team){
-  const icon=TEAM_ICONS[team.icon??0];
-  return `<span aria-hidden="true">${icon[0]}</span> ${esc(team.name)}`;
+  return `${teamIcon(team.icon)} ${esc(team.name)}`;
 }
 const HOST_SAVE='ceo-host-session-v1';
 const playerSave=()=> 'ceo-team-v1:'+room;
@@ -375,7 +376,7 @@ function renderPlayerLobby(snapshot){
         <input id="lobby-name" class="input" name="team" minlength="2" maxlength="28" required value="${esc(client.name)}">
         <fieldset style="border:0;padding:0;margin:12px 0 0;min-width:0">
           <legend>Elige un ícono</legend>
-          <div class="avatar-picker">${TEAM_ICONS.map(([icon,label],index)=>`<label class="avatar-option" title="${label}"><input type="radio" name="icon" aria-label="${label}" value="${index}" ${index===(client.icon??0)?'checked':''}><span aria-hidden="true">${icon}</span></label>`).join('')}</div>
+          <div class="avatar-picker">${TEAM_ICONS.map(([label],index)=>`<label class="avatar-option" title="${label}"><input type="radio" name="icon" aria-label="${label}" value="${index}" ${index===(client.icon??0)?'checked':''}>${teamIcon(index)}</label>`).join('')}</div>
         </fieldset>
         <button class="btn" type="submit">Guardar cambios</button>
         <p id="profile-feedback" class="muted" role="status"></p>
